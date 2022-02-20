@@ -1,0 +1,15 @@
+= DMK Notes
+
+== Running Tests
+
+Clojure tests:
+
+ * `lein test`
+ * `lein test-all`
+
+Clojurescript tests:
+
+ * `lein cljsbuild test` -- Run all tests (including `whitespace` build)
+ * `lein cljsbuild test simple` -- test cljs built with simple optimization
+ * `lein cljsbuild test advanced` -- test cljs built with advanced optimization
+

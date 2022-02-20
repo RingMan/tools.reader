@@ -39,6 +39,9 @@
   (get-file-name [reader]
     "Returns the file name the reader is reading from, or nil"))
 
+(defprotocol EolNormalizingReader
+  "Marker type for text readers that normalize line endings")
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; reader deftypes
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -99,6 +102,33 @@
       (aset buf buf-pos ch)))
   Closeable
   (close [this]
+    (when (instance? Closeable rdr)
+      (.close ^Closeable rdr))))
+
+(deftype LinuxNormalizingReader
+  [rdr]
+  EolNormalizingReader
+  Reader
+  (read-char [reader]
+    (let [ch (read-char rdr)]
+      (cond
+        (not (identical? ch \return)) ch
+        (identical? (peek-char rdr) \newline) (read-char rdr)
+        :else \newline)))
+  (peek-char [reader]
+    (let [ch (peek-char rdr)]
+      (if-not (identical? ch \return)
+        ch
+        \newline)))
+  IPushbackReader
+  (unread [reader ch]
+    (if-not (identical? ch \return)
+      (unread rdr ch)
+      (throw (ex-info "Can't unread a carriage return"
+                      {:msg "Illegal character in call to unread"
+                       :ch \return}))))
+  Closeable
+  (close [reader]
     (when (instance? Closeable rdr)
       (.close ^Closeable rdr))))
 
@@ -376,7 +406,8 @@
    (indexing-push-back-reader s-or-rdr buf-len nil))
   ([s-or-rdr buf-len file-name]
    (IndexingPushbackReader.
-    (to-pbr s-or-rdr buf-len) 1 1 true nil 0 file-name false)))
+     (->LinuxNormalizingReader (to-pbr s-or-rdr buf-len))
+     1 1 true nil 0 file-name false)))
 
 (defn ^Closeable source-logging-push-back-reader
   "Creates a SourceLoggingPushbackReader from a given string or PushbackReader"
