@@ -103,6 +103,56 @@
       (.close ^Closeable rdr))))
 
 (deftype IndexingPushbackReader
+  [rdr ^java.util.ArrayDeque positions capacity file-name]
+  Reader
+  (read-char [reader]
+    #_(println "dmk: read-char")
+    (let [row (get-line-number reader)
+          col (get-column-number reader)
+          ch (read-char rdr)]
+      (when ch
+        (when (>= (.size positions) (inc capacity))
+          #_(println "popping last")
+          (.removeLast positions))
+        (.push positions [ch row col])
+        ch)))
+
+  (peek-char [_reader]
+    #_(println "dmk: peek-char")
+    (peek-char rdr))
+
+  IPushbackReader
+  (unread [_reader ch]
+    #_(println "dmk: unread" ch)
+    (unread rdr ch)
+    (when ch
+      (.pop positions)))
+
+  IndexingReader
+  (get-line-number [_reader]
+    #_(println "dmk get-line-number")
+    (let [[ch row _] (.peek positions)
+          #_#_ _ (println "after peek")]
+      (case ch
+        nil 1
+        \newline (inc row)
+        \return (if (identical? \newline (peek-char rdr)) row (inc row))
+        row)))
+  (get-column-number [_reader]
+    #_(println "dmk get-column-number")
+    (let [[ch _ col] (.peek positions)]
+      (case ch
+        (nil \newline) 1
+        \return (if (identical? \newline (peek-char rdr)) (inc col) 1)
+        (inc col))))
+  (get-file-name [_reader] file-name)
+
+  Closeable
+  (close [_reader]
+    (when (instance? Closeable rdr)
+      (.close ^Closeable rdr))))
+
+#_(deftype IndexingPushbackReader
     [rdr ^:unsynchronized-mutable ^long line ^:unsynchronized-mutable ^long column
      ^:unsynchronized-mutable line-start? ^:unsynchronized-mutable prev
      ^:unsynchronized-mutable ^long prev-column file-name
@@ -368,7 +418,7 @@
   ([^InputStream is buf-len]
    (push-back-reader (input-stream-reader is) buf-len)))
 
-(defn ^Closeable indexing-push-back-reader
+#_(defn ^Closeable indexing-push-back-reader
   "Creates an IndexingPushbackReader from a given string or PushbackReader"
   ([s-or-rdr]
    (indexing-push-back-reader s-or-rdr 1))
@@ -377,6 +427,20 @@
   ([s-or-rdr buf-len file-name]
    (IndexingPushbackReader.
     (to-pbr s-or-rdr buf-len) 1 1 true nil 0 file-name false)))
+
+(defn indexing-push-back-reader
+     "Creates an IndexingPushbackReader from a given string or PushbackReader"
+     (^Closeable
+       [s-or-rdr]
+       (indexing-push-back-reader s-or-rdr 1))
+     (^Closeable
+       [s-or-rdr buf-len]
+       (indexing-push-back-reader s-or-rdr buf-len nil))
+     (^Closeable
+       [s-or-rdr buf-len file-name]
+       #_(println "making index push-back rdr")
+       (IndexingPushbackReader.
+         (to-pbr s-or-rdr buf-len) (java.util.ArrayDeque.) buf-len file-name)))
 
 (defn ^Closeable source-logging-push-back-reader
   "Creates a SourceLoggingPushbackReader from a given string or PushbackReader"
