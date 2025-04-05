@@ -1,4 +1,4 @@
-(defproject org.clojure/tools.reader "1.0.0-SNAPSHOT"
+(defproject org.clojure/tools.reader "1.5.3-SNAPSHOT"
   :description "A Clojure reader in Clojure"
   :parent [org.clojure/pom.contrib "1.4.0"]
   :url "https://github.com/clojure/tools.reader"
@@ -7,8 +7,9 @@
   :source-paths ["src/main/clojure" "src/main/cljs"]
   :test-paths ["src/test/clojure"]
   :repositories {"sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
-  :dependencies [[org.clojure/clojure "1.11.4"]
-                 [org.clojure/clojurescript "1.10.773" :scope "provided"]]
+  :dependencies [[org.clojure/clojure "1.12.0"]
+                 [org.clojure/clojurescript "1.10.773" :scope "provided"]
+                 [org.clojure/test.check "1.1.0"]]
   :profiles {:1.5 {:dependencies [[org.clojure/clojure "1.5.1"]]}
              :1.6 {:dependencies [[org.clojure/clojure "1.6.0"]]}
              :1.7 {:dependencies [[org.clojure/clojure "1.7.0"]]}
