@@ -129,12 +129,12 @@
   (is (instance? cljs.core.Keyword (read-string ":alphabet"))) )
 
 (deftest read-tagged
-  (is (= #inst "2010-11-12T13:14:15.666"
+  (is (= #inst "2010-11-12T13:14:15.666-00:00"
          (read-string {:readers data-readers}
-                          "#inst \"2010-11-12T13:14:15.666\"")))
-  (is (= #inst "2010-11-12T13:14:15.666"
+                          "#inst \"2010-11-12T13:14:15.666-00:00\"")))
+  (is (= #inst "2010-11-12T13:14:15.666-00:00"
          (read-string {:readers data-readers}
-                          "#inst\"2010-11-12T13:14:15.666\"")))
+                          "#inst\"2010-11-12T13:14:15.666-00:00\"")))
   (is (= #uuid "550e8400-e29b-41d4-a716-446655440000"
          (read-string {:readers data-readers}
                           "#uuid \"550e8400-e29b-41d4-a716-446655440000\"")))

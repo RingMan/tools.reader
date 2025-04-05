@@ -122,7 +122,7 @@
              "  true false :kw :ns/kw 'foo/bar nil"
              "  \\f \\u0194 \\newline \\o377 \\ud7ff "
              " () [7] #{9 8} '^{:meta []} bar  "
-             "  #inst \"2010-11-12T13:14:15.666\""
+             "  #inst \"2010-11-12T13:14:15.666-00:00\""
              " ]"]))
 
 (def expected-vector
