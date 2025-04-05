@@ -39,11 +39,17 @@
                 ^{:line 1 :column 5 :end-line 1 :end-column 31 :file "haiku.clj"} clojure.tools.reader.haiku)
     {:line 1 :column 1 :end-line 1 :end-column 32 :file "haiku.clj"}))
 
-(def expected-haiku-defn
+(defn expected-haiku-doc-string [eol normalized?]
+  (let [doc "It will read the form\n    but will the form metadata be\n    or never become?"]
+    (if normalized?
+      doc
+      (replace-newlines doc eol))) )
+
+(defn expected-haiku-defn [expected-doc-string]
   (with-meta (list
               '^{:line 3 :column 2 :end-line 3 :end-column 6 :file "haiku.clj"} defn
               '^{:line 3 :column 7 :end-line 3 :end-column 12 :file "haiku.clj"} haiku
-              "It will read the form\n    but will the form metadata be\n    or never become?"
+              expected-doc-string
               (with-meta ['^{:line 7 :column 6 :end-line 7 :end-column 16 :file "haiku.clj"} first-five
                           '^{:line 7 :column 17 :end-line 7 :end-column 29 :file "haiku.clj"} middle-seven
                           '^{:line 7 :column 30 :end-line 7 :end-column 39 :file "haiku.clj"} last-five]
@@ -60,28 +66,33 @@
     {:line 3 :column 1 :end-line 10 :end-column 33 :file "haiku.clj"}))
 
 (defn multiple-reader-variants-from-string [s filename]
-  [(-> (test-reader s)
-       (LineNumberingPushbackReader.)
-       (reader-types/indexing-push-back-reader 1 filename))
-   (-> (test-reader s)
-       (BufferedReader.)
-       (reader-types/indexing-push-back-reader 1 filename))])
+  [[(-> (test-reader s)
+        (LineNumberingPushbackReader.)
+        (reader-types/indexing-push-back-reader 1 filename))
+    :normalized]
+   [(-> (test-reader s)
+        (BufferedReader.)
+        (reader-types/indexing-push-back-reader 1 filename))
+    nil]])
 
-(defn read-metadata-helper [reader]
+(defn read-metadata-helper [reader expected-doc-string]
   (let [first-form (read reader)
         second-form (read reader)
         third-form (read reader false :eof)]
     (is (= {:line 1 :column 1 :end-line 1 :end-column 32 :file "haiku.clj"} (meta first-form)))
     (compare-forms-with-meta expected-haiku-ns first-form)
-    (compare-forms-with-meta expected-haiku-defn second-form)
+    (compare-forms-with-meta (expected-haiku-defn expected-doc-string) second-form)
     (is (= :eof third-form))))
 
 (deftest read-metadata
-  (doseq [s [test-contents
+  (doseq [eol ["\n" "\r" "\r\n"]
+          :let [s (replace-newlines test-contents eol)]
+          #_#_s [test-contents
              (replace-newlines test-contents "\r")
              (replace-newlines test-contents "\r\n")]
-          rdr (multiple-reader-variants-from-string s "haiku.clj")]
-    (read-metadata-helper rdr)))
+          [rdr normalized?] (multiple-reader-variants-from-string s "haiku.clj")
+          :let [doc-string (expected-haiku-doc-string eol normalized?)]]
+    (read-metadata-helper rdr doc-string)))
 
 (def expected-haiku-ns-with-source
   (with-meta  '(^{:line 1 :column 2 :end-line 1 :end-column 4 :source "ns" :file "haiku.clj"} ns
@@ -190,8 +201,8 @@
   ;; cause a StackOverflowError exception.
   (doseq [consecutive-lineseps [1 10 10000]
           linesep ["\n" "\r" "\r\n"]
-          reader (multiple-reader-variants-from-string
-                  (test-string consecutive-lineseps linesep) "foo.clj")]
+          [reader _] (multiple-reader-variants-from-string
+                       (test-string consecutive-lineseps linesep) "foo.clj")]
     (let [first-form (read reader)
           second-form (read reader)
           third-form (read reader false :eof)]
