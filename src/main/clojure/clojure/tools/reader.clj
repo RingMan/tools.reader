@@ -20,7 +20,7 @@
             [clojure.tools.reader.impl.commons :refer :all]
             [clojure.tools.reader.default-data-readers :as data-readers])
   (:import (clojure.lang PersistentHashSet IMeta
-                         RT Symbol Reflector Var IObj
+                         RT Reflector Var IObj
                          PersistentVector IRecord Namespace)
            clojure.tools.reader.reader_types.SourceLoggingPushbackReader
            java.lang.reflect.Constructor
@@ -51,9 +51,9 @@
     (\" \; \@ \^ \` \~ \( \) \[ \] \{ \} \\) true
     false))
 
-(defn- ^String read-token
+(defn- read-token
   "Read in a single logical token from the reader"
-  [rdr kind initch]
+  ^String [rdr kind initch]
   (if-not initch
     (err/throw-eof-at-start rdr kind)
     (loop [sb (StringBuilder.) ch initch]
@@ -76,7 +76,7 @@
     (err/throw-eof-at-dispatch rdr)))
 
 (defn- read-unmatched-delimiter
-  [rdr ch opts pending-forms]
+  [rdr ch _opts _pending-forms]
   (err/throw-unmatch-delimiter rdr ch))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -84,7 +84,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn read-regex
-  [rdr ch opts pending-forms]
+  [rdr _ch _opts _pending-forms]
   (let [sb (StringBuilder.)]
     (loop [ch (read-char rdr)]
       (if (identical? \" ch)
@@ -139,7 +139,7 @@
 
 (defn- read-char*
   "Read in a character literal"
-  [rdr backslash opts pending-forms]
+  [rdr _backslash _opts _pending-forms]
   (let [ch (read-char rdr)]
     (if-not (nil? ch)
       (let [token (if (or (macro-terminating? ch)
@@ -190,9 +190,9 @@
 (defonce ^:private READ_FINISHED (Object.))
 
 (def ^:dynamic *read-delim* false)
-(defn- ^PersistentVector read-delimited
+(defn- read-delimited
   "Reads and returns a collection ended with delim"
-  [kind delim rdr opts pending-forms]
+  ^PersistentVector [kind delim rdr opts pending-forms]
   (let [[start-line start-column] (starting-line-col-info rdr)
         delim (char delim)]
     (binding [*read-delim* true]
@@ -271,7 +271,7 @@
             (err/throw-invalid-number rdr s)))
       (recur (doto sb (.append ch)) (read-char rdr)))))
 
-(defn- escape-char [sb rdr]
+(defn- escape-char [rdr]
   (let [ch (read-char rdr)]
     (case ch
       \t "\t"
@@ -290,15 +290,15 @@
           (if (> (int ch) 0377)
             (err/throw-bad-octal-number rdr)
             ch))
-        (err/throw-bad-escape-char rdr ch)))))
+        ch #_(err/throw-bad-escape-char rdr ch)))))
 
 (defn- read-string*
-  [reader _ opts pending-forms]
+  [reader _ _opts _pending-forms]
   (loop [sb (StringBuilder.)
          ch (read-char reader)]
     (case ch
       nil (err/throw-eof-reading reader :string sb)
-      \\ (recur (doto sb (.append (escape-char sb reader)))
+      \\ (recur (doto sb (.append (escape-char reader)))
                 (read-char reader))
       \" (str sb)
       (recur (doto sb (.append ch)) (read-char reader)))))
@@ -344,7 +344,7 @@
       (find-ns sym)))
 
 (defn- read-keyword
-  [reader initch opts pending-forms]
+  [reader _initch _opts _pending-forms]
   (let [ch (read-char reader)]
     (if-not (whitespace? ch)
       (let [token (read-token reader :keyword ch)
@@ -391,7 +391,7 @@
   [rdr _ opts pending-forms]
   (let [[start-line start-column] (starting-line-col-info rdr)
         ;; subtract 1 from start-column so it includes the # in the leading #{
-        start-column (if start-column (int (dec (int start-column))))
+        start-column (when start-column (int (dec (int start-column))))
         the-set (PersistentHashSet/createWithCheck
           (read-delimited :set \} rdr opts pending-forms))
         [end-line end-column] (ending-line-col-info rdr)]
@@ -535,7 +535,7 @@
 
 (defn- read-fn
   [rdr _ opts pending-forms]
-  (if (thread-bound? #'arg-env)
+  (when (thread-bound? #'arg-env)
     (throw (IllegalStateException. "Nested #()s are not allowed")))
   (binding [arg-env (sorted-map)]
     (let [form (read* (doto rdr (unread \()) true nil opts pending-forms) ;; this sets bindings
@@ -598,8 +598,8 @@
 (def ^:private ^:dynamic gensym-env nil)
 
 (defn- read-unquote
-  [rdr comma opts pending-forms]
-  (if-let [ch (peek-char rdr)]
+  [rdr _comma opts pending-forms]
+  (when-let [ch (peek-char rdr)]
     (if (identical? \@ ch)
       ((wrapping-reader 'clojure.core/unquote-splicing) (doto rdr read-char) \@ opts pending-forms)
       ((wrapping-reader 'clojure.core/unquote) rdr \~ opts pending-forms))))
@@ -639,7 +639,7 @@
       (seq (persistent! key-vals)))))
 
 (defn- register-gensym [sym]
-  (if-not gensym-env
+  (when-not gensym-env
     (throw (IllegalStateException. "Gensym literal not in syntax-quote")))
   (or (get gensym-env sym)
       (let [gs (symbol (str (subs (name sym)
@@ -665,7 +665,7 @@
       (if-let [o ((ns-map *ns*) s)]
         (if (class? o)
           (symbol (.getName ^Class o))
-          (if (var? o)
+          (when (var? o)
             (symbol (-> ^Var o .ns ns-name*) (-> ^Var o .sym name))))
         (symbol (ns-name* *ns*) (name s))))))
 
@@ -747,7 +747,7 @@
    (add-meta form)))
 
 (defn- read-syntax-quote
-  [rdr backquote opts pending-forms]
+  [rdr _backquote opts pending-forms]
   (binding [gensym-env {}]
     (-> (read* rdr true nil opts pending-forms)
       syntax-quote*)))
@@ -850,16 +850,16 @@
           :extended
           (let [vals (RT/map entries)]
             (loop [s (keys vals)]
-              (if s
+              (when s
                 (if-not (keyword? (first s))
                   (err/reader-error rdr "Unreadable ctor form: key must be of type clojure.lang.Keyword")
                   (recur (next s)))))
             (Reflector/invokeStaticMethod class "create" (object-array [vals])))))
       (err/reader-error rdr "Invalid reader constructor form"))))
 
-(defn- read-tagged [rdr initch opts pending-forms]
+(defn- read-tagged [rdr _initch opts pending-forms]
   (let [tag (read* rdr true nil opts pending-forms)]
-    (if-not (symbol? tag)
+    (when-not (symbol? tag)
       (err/throw-bad-reader-tag rdr tag))
     (if *suppress-read*
       (tagged-literal tag (read* rdr true nil opts pending-forms))
@@ -947,14 +947,14 @@
                 (throw (ex-info (.getMessage e)
                                 (merge {:type :reader-exception}
                                        d
-                                       (if (indexing-reader? reader)
+                                       (when (indexing-reader? reader)
                                          {:line   (get-line-number reader)
                                           :column (get-column-number reader)
                                           :file   (get-file-name reader)}))
                                 e))))
             (throw (ex-info (.getMessage e)
                             (merge {:type :reader-exception}
-                                   (if (indexing-reader? reader)
+                                   (when (indexing-reader? reader)
                                      {:line   (get-line-number reader)
                                       :column (get-column-number reader)
                                       :file   (get-file-name reader)}))
