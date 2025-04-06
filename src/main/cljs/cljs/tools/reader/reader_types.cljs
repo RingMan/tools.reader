@@ -36,6 +36,9 @@
   (get-file-name [reader]
     "Returns the file name the reader is reading from, or nil"))
 
+(defprotocol EolNormalizingReader
+  "Marker type for text readers that normalize line endings")
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; reader deftypes
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -68,6 +71,25 @@
     (when buf
       (char (aget buf 0)))))
 
+; An EolNormalizingReader that normalizes line endings to Linux style.
+; Use it to wrap a StringReader or InputStreamReader
+
+(deftype LinuxNormalizingReader
+  [rdr]
+  EolNormalizingReader
+  Reader
+  (read-char [_reader]
+    (let [ch (read-char rdr)]
+      (cond
+        (not (identical? ch \return)) ch
+        (identical? (peek-char rdr) \newline) (read-char rdr)
+        :else \newline)))
+  (peek-char [_reader]
+    (let [ch (peek-char rdr)]
+      (if-not (identical? ch \return)
+        ch
+        \newline))))
+
 (deftype PushbackReader
   [^not-native rdr buf buf-len ^:mutable buf-pos]
   Reader
@@ -99,7 +121,7 @@
       \newline)
     ch))
 
-(deftype IndexingPushbackReader
+#_(deftype IndexingPushbackReader
     [^not-native rdr ^:mutable line ^:mutable column
      ^:mutable line-start? ^:mutable prev
      ^:mutable prev-column file-name]
@@ -132,6 +154,50 @@
   (get-line-number [reader] (int line))
   (get-column-number [reader] (int column))
   (get-file-name [reader] file-name))
+
+
+(deftype IndexingPushbackReader
+  [^not-native rdr ^:mutable positions capacity file-name ]
+  Reader
+  (read-char [reader]
+    #_(println "dmk: read-char 2")
+    (let [row (get-line-number reader)
+          col (get-column-number reader)
+          ch (read-char rdr)]
+      (when ch
+        (when (>= (count positions) (inc capacity))
+          #_(println "popping last")
+          (.pop positions))
+        (.unshift positions [ch row col])
+        ch)))
+
+  (peek-char [_reader]
+    (peek-char rdr))
+
+  IPushbackReader
+  (unread [_reader ch]
+    (unread rdr ch)
+    (when ch
+      (.shift positions)
+      nil))
+
+  IndexingReader
+  (get-line-number [_reader]
+    #_(println "dmk get-line-number")
+    (let [[ch row _] (first positions)
+          #_#_ _ (println "after peek")]
+      (case ch
+        nil 1
+        \newline (inc row)
+        \return (if (identical? \newline (peek-char rdr)) row (inc row))
+        row)))
+  (get-column-number [_reader]
+    (let [[ch _ col] (first positions)]
+      (case ch
+        (nil \newline) 1
+        \return (if (identical? \newline (peek-char rdr)) (inc col) 1)
+        (inc col))))
+  (get-file-name [_reader] file-name))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Source Logging support
@@ -209,6 +275,19 @@ logging frames. Called when pushing a character back."
   [rdr]
   (implements? IndexingReader rdr))
 
+(defn normalizing-reader
+  "Wraps a low-level `rdr` with one that normalizes
+  all line endings to \\newline"
+  [rdr]
+  (LinuxNormalizingReader. rdr))
+
+(defn push-back-reader
+  "Wraps a low-level reader with a PushbackReader"
+  ([rdr]
+     (push-back-reader rdr 1))
+  ([rdr buf-len]
+     (PushbackReader. rdr (object-array buf-len) buf-len buf-len)))
+
 (defn string-reader
   "Creates a StringReader from a given string"
   ([s]
@@ -224,7 +303,7 @@ logging frames. Called when pushing a character back."
 (defn node-readable-push-back-reader [readable]
   (PushbackReader. (NodeReadableReader. readable nil) (object-array 1) 1 1))
 
-(defn indexing-push-back-reader
+#_(defn indexing-push-back-reader
   "Creates an IndexingPushbackReader from a given string or PushbackReader"
   ([s-or-rdr]
      (indexing-push-back-reader s-or-rdr 1))
@@ -233,6 +312,32 @@ logging frames. Called when pushing a character back."
   ([s-or-rdr buf-len file-name]
      (IndexingPushbackReader.
       (if (string? s-or-rdr) (string-push-back-reader s-or-rdr buf-len) s-or-rdr) 1 1 true nil 0 file-name)))
+
+(defn to-pbr [s-or-rdr normalize? buf-len]
+  (let [?normalize #(if normalize? (normalizing-reader %) %)
+        rdr (cond
+              (string? s-or-rdr) (-> s-or-rdr
+                                     string-reader
+                                     ?normalize
+                                     (push-back-reader buf-len))
+              (implements? PushbackReader s-or-rdr) s-or-rdr
+              (implements? EolNormalizingReader s-or-rdr) (push-back-reader s-or-rdr buf-len)
+              :else (-> s-or-rdr
+                        normalizing-reader
+                        (push-back-reader buf-len)))]
+    rdr))
+
+(defn indexing-push-back-reader
+  "Creates an IndexingPushbackReader from a given string or PushbackReader"
+  ([s-or-rdr]
+   (indexing-push-back-reader s-or-rdr 1))
+  ([s-or-rdr buf-len]
+   (indexing-push-back-reader s-or-rdr buf-len nil))
+  ([s-or-rdr buf-len file-name]
+   (indexing-push-back-reader s-or-rdr buf-len file-name true))
+  ([s-or-rdr buf-len file-name normalize?]
+   (IndexingPushbackReader.
+     (to-pbr s-or-rdr normalize? buf-len) #js [] buf-len file-name)))
 
 (defn source-logging-push-back-reader
   "Creates a SourceLoggingPushbackReader from a given string or PushbackReader"
