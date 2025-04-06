@@ -39,6 +39,9 @@
   (get-file-name [reader]
     "Returns the file name the reader is reading from, or nil"))
 
+(defprotocol EolNormalizingReader
+  "Marker type for text readers that normalize line endings")
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; reader deftypes
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -75,6 +78,29 @@
   Closeable
   (close [this]
     (.close is)))
+
+; An EolNormalizingReader that normalizes line endings to Linux style.
+; Use it to wrap a StringReader or InputStreamReader
+
+(deftype LinuxNormalizingReader
+  [rdr]
+  EolNormalizingReader
+  Reader
+  (read-char [_reader]
+    (let [ch (read-char rdr)]
+      (cond
+        (not (identical? ch \return)) ch
+        (identical? (peek-char rdr) \newline) (read-char rdr)
+        :else \newline)))
+  (peek-char [_reader]
+    (let [ch (peek-char rdr)]
+      (if-not (identical? ch \return)
+        ch
+        \newline)))
+  Closeable
+  (close [_reader]
+    (when (instance? Closeable rdr)
+      (.close ^Closeable rdr))))
 
 (deftype PushbackReader
     [rdr ^"[Ljava.lang.Object;" buf ^long buf-len ^:unsynchronized-mutable ^long buf-pos]
