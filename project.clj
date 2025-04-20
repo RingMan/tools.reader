@@ -4,7 +4,7 @@
   :url "https://github.com/clojure/tools.reader"
   :license {:name "Eclipse Public License"
             :url "https://www.eclipse.org/legal/epl-v10.html"}
-  :source-paths ["src/main/clojure" "src/main/cljs"]
+  :source-paths ["src/main/clojure" "src/main/cljs" "src/main/cljc"]
   :test-paths ["src/test/clojure"]
   :repositories {"sonatype-oss-public" "https://oss.sonatype.org/content/groups/public/"}
   :dependencies [[org.clojure/clojure "1.12.0"]
@@ -25,24 +25,24 @@
   :plugins [[lein-cljsbuild "1.1.8"]]
   :cljsbuild
   {:builds [{:id "dev"
-             :source-paths ["src/main/cljs"]
+             :source-paths ["src/main/cljs" "src/main/cljc"]
              :compiler {:output-to "out/main.js"
                         :output-dir "out"
                         :optimizations :simple
                         :pretty-print true}}
             {:id "whitespace"
-             :source-paths ["src/main/cljs" "src/test/cljs"]
+             :source-paths ["src/main/cljs" "src/main/cljc" "src/test/cljs"]
              :compiler {:output-to "target/test/tests-whitespace.js"
                         :output-dir "target/test/out-whitespace"
                         :optimizations :whitespace}}
             {:id "simple"
-             :source-paths ["src/main/cljs" "src/test/cljs"]
+             :source-paths ["src/main/cljs" "src/main/cljc" "src/test/cljs"]
              :notify-command ["node" "target/test/tests-simple.js"]
              :compiler {:optimizations :simple
                         :output-to "target/test/tests-simple.js"
                         :output-dir "target/test/out-simple"}}
             {:id "advanced"
-             :source-paths ["src/main/cljs" "src/test/cljs"]
+             :source-paths ["src/main/cljs" "src/main/cljc" "src/test/cljs"]
              :compiler {:optimizations :advanced
                         :output-to "target/test/tests-advanced.js"
                         :output-dir "target/test/out-advanced"}}]
