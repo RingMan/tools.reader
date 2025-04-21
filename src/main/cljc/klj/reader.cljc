@@ -20,6 +20,67 @@
   (:import (clojure.tools.reader.reader_types SourceLoggingPushbackReader)
            (java.util List LinkedList)))
 
+;; ## Helpers
+
+(defn read-while
+  "Read while the chars fulfill the given condition. Ignores
+    the unmatching char."
+  ([#?(:cljs ^not-native reader :default reader) p?]
+   (read-while reader p? (not (p? nil))))
+
+  ([#?(:cljs ^not-native reader :default reader) p? eof?]
+   (let [buf (StringBuffer.)]
+     (loop []
+       (if-let [c (read-char reader)]
+         (if (p? c)
+           (do
+             (.append buf c)
+             (recur))
+           (do
+             (unread reader c)
+             (.toString buf)))
+         (if eof?
+           (.toString buf)
+           (err/throw-eof-error reader nil)))))))
+
+(defn read-until
+  "Read until a char fulfills the given condition. Ignores the
+   matching char."
+  [#?(:cljs ^not-native reader :default reader) p?]
+  (read-while
+    reader
+    (complement p?)
+    (p? nil)))
+
+(defn read-raw-block
+  "Helper to read code in a raw block starting with `\\R`
+  Reader should be positioned at beginning of optional tag.
+  Returns tuple of tag and the content between `lch` and `rch`"
+  [#?(:cljs ^not-native reader :default reader) lch rch termch]
+  (println "dmk read-raw-block")
+  (read-char reader) ;; skip \R
+  (let [delim (read-until reader #(= % lch))
+        _ (println {:delim delim})
+        suffix (str rch delim termch)]
+    (read-char reader) ;skip lch
+    [delim
+     (let [buf (StringBuffer.)
+           n (count suffix)]
+       (loop [ix 0 j 1]
+         (if (< ix n)
+           (let [c (read-char reader)]
+             (cond
+               (nil? c) (err/throw-eof-error reader nil)
+               (= c (nth suffix ix)) (recur (inc ix) (inc j))
+               :else (do
+                       (.append buf (subs suffix 0 ix))
+                       (if (= c (first suffix))
+                         (recur 1 (inc j))
+                         (do
+                           (.append buf c)
+                           (recur 0 (inc j)))))))
+           (.toString buf))))]))
+
 (defn read-char*
   [reader _initch _opts _pending-forms]
   (println "dmk read-char*")
@@ -38,7 +99,26 @@
 (defn read-string*
   [reader _initch _opts _pending-forms]
   (println "dmk read-string*")
-  (#'tr/read-string* reader _initch _opts _pending-forms))
+  (if (not= \\ (peek-char reader))
+    (#'tr/read-string* reader _initch _opts _pending-forms)
+    (do
+      (read-char reader) ;; skip \\
+      (if (= \R (peek-char reader))
+        (let [[_delim s] (read-raw-block reader \( \) \")]
+          s)
+        (do
+          (unread reader \\)
+          (#'tr/read-string* reader _initch _opts _pending-forms))))))
+
+(defn read-quoted-name
+  [reader _initch _opts _pending-forms]
+  (println "dmk read-quoted-name")
+  (let [s (read-string* reader _initch _opts _pending-forms)
+        ch (read-char reader)]
+    (case ch
+      \: (keyword s)
+      \' (symbol s)
+      (do (unread reader ch) s))))
 
 (defn read-symbol
   [reader _initch]
@@ -77,7 +157,7 @@
 
 (defn macros [ch]
   (case ch
-    \" read-string*
+    \" read-quoted-name
     \: read-keyword #_#'tr/read-keyword
     \; read-comment
     \' (#'tr/wrapping-reader 'quote)
