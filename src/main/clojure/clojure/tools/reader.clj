@@ -33,7 +33,8 @@
 ;; helpers
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(declare ^:private read*
+(declare ^:dynamic read*
+         ^:private default-read
          macros dispatch-macros
          ^:dynamic *read-eval*
          ^:dynamic *data-readers*
@@ -187,7 +188,8 @@
     [(get-line-number rdr) (get-column-number rdr)]))
 
 (defonce ^:private READ_EOF (Object.))
-(defonce ^:private READ_FINISHED (Object.))
+#_(defonce ^:private READ_FINISHED (Object.))
+(defonce READ_FINISHED (Object.))
 
 (def ^:dynamic *read-delim* false)
 (defn- read-delimited
@@ -908,6 +910,10 @@
    will be thrown for the unknown tag."
   nil)
 
+(def ^:dynamic read*
+  "Override this to use a custom reader with custom reader and dispatch macros."
+  default-read)
+
 (def ^:dynamic *suppress-read* false)
 
 (def default-data-readers
@@ -916,7 +922,7 @@
   {'inst #'data-readers/read-instant-date
    'uuid #'data-readers/default-uuid-reader})
 
-(defn ^:private read*
+(defn ^:private default-read
   ([reader eof-error? sentinel opts pending-forms]
      (read* reader eof-error? sentinel nil opts pending-forms))
   ([reader eof-error? sentinel return-on opts pending-forms]

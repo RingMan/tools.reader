@@ -45,6 +45,11 @@
   (println "dmk read-symbol")
   (#'tr/read-symbol reader _initch))
 
+(defn read-escaped-symbol
+  [reader _initch _opts _pending-forms]
+  (println "dmk read-escaped-symbol")
+  (#'tr/read-symbol reader _initch))
+
 (defn read-keyword
   [reader _initch _opts _pending-forms]
   (println "dmk read-keyword")
@@ -105,25 +110,25 @@
     \? #'tr/read-cond
     \: #'tr/read-namespaced-map
     \# #'tr/read-symbolic-value
+    \\ read-escaped-symbol
     nil))
 
 (defn read-dispatch
   [rdr _ch opts pending-forms]
   (if-let [ch (read-char rdr)]
-    (if-let [dm (dispatch-macros ch)]
-      (dm rdr ch opts pending-forms)
-      ;; TODO: write read-bool-or-tagged
-      ;; to read #t as true and #f as false
-      (#'tr/read-tagged (doto rdr (unread ch)) ch opts pending-forms)) ;; ctor reader is implemented as a tagged literal
+    (case ch
+      (\t \T) true  ; TODO: ensure boundary after
+      (\f \F) false ; TODO: ensure boundary after
+      (if-let [dm (dispatch-macros ch)]
+        (dm rdr ch opts pending-forms)
+        ;; TODO: write read-bool-or-tagged
+        ;; to read #t as true and #f as false
+        (#'tr/read-tagged (doto rdr (unread ch)) ch opts pending-forms))) ;; ctor reader is implemented as a tagged literal
     (err/throw-eof-at-dispatch rdr)))
 
-(comment
-  (tr/read-string ":kwd")
-  (alter-var-root #'tr/macros (constantly macros))
-  (alter-var-root #'tr/dispatch-macros (constantly dispatch-macros)))
-
 ;;; DMK: Copied from clojure.tools.reader ns
-;;; so that `read*` uses my `macros` instead of the default
+;;; so that `read*` uses my `macros`, `read-number` and
+;;; `read-symbol`.
 
 (defn read*
   ([reader eof-error? sentinel opts pending-forms]
@@ -140,7 +145,7 @@
                          (cond
                            (whitespace? ch) reader
                            (nil? ch) (if eof-error? (err/throw-eof-error reader nil) sentinel)
-                           (= ch return-on) #'tr/READ_FINISHED
+                           (= ch return-on) tr/READ_FINISHED
                            (rc/number-literal? reader ch) (read-number reader ch)
                            :else (if-let [f (macros ch)]
                                    (f reader ch opts pending-forms)
@@ -169,70 +174,15 @@
                                       :file   (get-file-name reader)}))
                             e)))))))
 
-(defn read
-  "Reads the first object from an IPushbackReader or a java.io.PushbackReader.
-   Returns the object read. If EOF, throws if eof-error? is true.
-   Otherwise returns sentinel. If no stream is provided, *in* will be used.
+(defn read [& args]
+  (binding [tr/read* read*]
+     (apply tr/read args)))
 
-   Opts is a persistent map with valid keys:
-    :read-cond - :allow to process reader conditionals, or
-                 :preserve to keep all branches
-    :features - persistent set of feature keywords for reader conditionals
-    :eof - on eof, return value unless :eofthrow, then throw.
-           if not specified, will throw
+(defn read-string [& args]
+  (binding [tr/read* read*]
+     (apply tr/read-string args)))
 
-   ***WARNING***
-   Note that read can execute code (controlled by *read-eval*),
-   and as such should be used only with trusted sources.
+(defn read+string [& args]
+  (binding [tr/read* read*]
+     (apply tr/read-string args)))
 
-   To read data structures only, use clojure.tools.reader.edn/read
-
-   Note that the function signature of clojure.tools.reader/read and
-   clojure.tools.reader.edn/read is not the same for eof-handling"
-  {:arglists '([] [reader] [opts reader] [reader eof-error? eof-value])}
-  ([] (read *in* true nil))
-  ([reader] (read reader true nil))
-  ([{eof :eof :as opts :or {eof :eofthrow}} reader]
-   (when (source-logging-reader? reader)
-     (let [^StringBuilder buf (:buffer @(.source-log-frames ^SourceLoggingPushbackReader reader))]
-       (.setLength buf 0)))
-   (read* reader (= eof :eofthrow) eof nil opts (LinkedList.)))
-  ([reader eof-error? sentinel]
-   (when (source-logging-reader? reader)
-     (let [^StringBuilder buf (:buffer @(.source-log-frames ^SourceLoggingPushbackReader reader))]
-       (.setLength buf 0)))
-   (read* reader eof-error? sentinel nil {} (LinkedList.))))
-
-(defn read-string
-  "Reads one object from the string s.
-   Returns nil when s is nil or empty.
-
-   ***WARNING***
-   Note that read-string can execute code (controlled by *read-eval*),
-   and as such should be used only with trusted sources.
-
-   To read data structures only, use clojure.tools.reader.edn/read-string
-
-   Note that the function signature of clojure.tools.reader/read-string and
-   clojure.tools.reader.edn/read-string is not the same for eof-handling"
-  ([s]
-     (read-string {} s))
-  ([opts s]
-     (when (and s (not (identical? s "")))
-       (read opts (string-push-back-reader s)))))
-
-(defn read+string
-  "Like read, and taking the same args. reader must be a SourceLoggingPushbackReader.
-  Returns a vector containing the object read and the (whitespace-trimmed) string read."
-  ([] (read+string (source-logging-push-back-reader *in*)))
-  ([stream] (read+string stream true nil))
-  ([^SourceLoggingPushbackReader stream eof-error? eof-value]
-   (let [^StringBuilder buf (doto ^StringBuilder (:buffer @(.source-log-frames stream)) (.setLength 0))
-         o (log-source stream (read stream eof-error? eof-value))
-         s (.trim (str buf))]
-     [o s]))
-  ([opts ^SourceLoggingPushbackReader stream]
-   (let [^StringBuilder buf (doto ^StringBuilder (:buffer @(.source-log-frames stream)) (.setLength 0))
-         o (log-source stream (read opts stream))
-         s (.trim (str buf))]
-     [o s])))
