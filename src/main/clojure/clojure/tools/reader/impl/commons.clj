@@ -120,6 +120,25 @@
                   (== -1 (.indexOf token "/")))
           [nil token])))))
 
+(comment
+  ;; Empty, starts with "::" or ends with ":"
+  (->> ["" ":" "::" "::hi" "a:"] (map parse-symbol) (every? nil?))
+  ;; sym starts with digit
+  (parse-symbol "my-ns/5hi")
+  ;; sym is empty
+  (parse-symbol "my-ns/")
+  ;; ns ends with ":"
+  (parse-symbol "my-ns:/sym")
+  ;; sym has "/" in it
+  (parse-symbol "hi-there/this/that")
+
+  ;;; These are ok
+  ;; sym is "/"
+  (parse-symbol "my-ns//")
+  ;; sym is a single digit
+  (parse-symbol "slash/8")
+  :eoc)
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; readers
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
