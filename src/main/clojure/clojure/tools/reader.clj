@@ -276,6 +276,7 @@
 (defn- escape-char [rdr]
   (let [ch (read-char rdr)]
     (case ch
+      \s " "
       \t "\t"
       \r "\r"
       \n "\n"
