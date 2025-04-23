@@ -288,6 +288,10 @@
            (if (== -1 (Character/digit (int ch) 16))
              (err/throw-invalid-unicode-escape rdr ch)
              (read-unicode-char rdr ch 16 4 true)))
+      \o (let [ch (read-unicode-char rdr (read-char rdr) 8 3 false)]
+           (if (> (int ch) 0377)
+             (err/throw-bad-octal-number rdr)
+             ch))
       (if (numeric? ch)
         (let [ch (read-unicode-char rdr ch 8 3 false)]
           (if (> (int ch) 0377)
