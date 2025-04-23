@@ -41,6 +41,17 @@
     (\" \; \@ \^ \` \~ \( \) \[ \] \{ \} \\) true
     false))
 
+(defn parse-symbol
+  "Parses a string into a vector of the namespace and symbol.
+  Doesn't enforce anything"
+  [^String token]
+  (let [ns-idx (.indexOf token "/")]
+    (cond
+      (neg? ns-idx) [nil token]
+      (pos? ns-idx) [(subs token 0 ns-idx) (subs token (inc ns-idx))]
+      (= 1 (count token)) [nil "/"]
+      :else [(subs token 0 ns-idx) (subs token (inc ns-idx))])))
+
 (defn read-sym-or [macro-fn]
   (fn [rdr ch opt pending-forms]
     (if (terminating? (peek-char rdr))
@@ -136,34 +147,33 @@
                     (read-token rdr ch))
             token-len (count token)]
         (cond
+          (== 1 token-len)  (Character/valueOf (nth token 0))
 
-         (== 1 token-len)  (Character/valueOf (nth token 0))
+          (= token "newline") \newline
+          (= token "space") \space
+          (= token "tab") \tab
+          (= token "backspace") \backspace
+          (= token "formfeed") \formfeed
+          (= token "return") \return
 
-         (= token "newline") \newline
-         (= token "space") \space
-         (= token "tab") \tab
-         (= token "backspace") \backspace
-         (= token "formfeed") \formfeed
-         (= token "return") \return
+          (.startsWith token "u")
+          (let [c (#'tr/read-unicode-char token 1 4 16)
+                ic (int c)]
+            (if (and (> ic #'tr/upper-limit)
+                     (< ic #'tr/lower-limit))
+              (err/throw-invalid-character-literal rdr (Integer/toString ic 16))
+              c))
 
-         (.startsWith token "u")
-         (let [c (#'tr/read-unicode-char token 1 4 16)
-               ic (int c)]
-           (if (and (> ic #'tr/upper-limit)
-                    (< ic #'tr/lower-limit))
-             (err/throw-invalid-character-literal rdr (Integer/toString ic 16))
-             c))
+          (.startsWith token "o")
+          (let [len (dec token-len)]
+            (if (> len 3)
+              (err/throw-invalid-octal-len rdr token)
+              (let [uc (#'tr/read-unicode-char token 1 len 8)]
+                (if (> (int uc) 0377)
+                  (err/throw-bad-octal-number rdr)
+                  uc))))
 
-         (.startsWith token "o")
-         (let [len (dec token-len)]
-           (if (> len 3)
-             (err/throw-invalid-octal-len rdr token)
-             (let [uc (#'tr/read-unicode-char token 1 len 8)]
-               (if (> (int uc) 0377)
-                 (err/throw-bad-octal-number rdr)
-                 uc))))
-
-         :else (err/throw-unsupported-character rdr token)))
+          :else (err/throw-unsupported-character rdr token)))
       (err/throw-eof-in-character rdr))))
 
 (defn read-comment
@@ -201,47 +211,62 @@
       \c (first s) ; TODO: ensure length is one
       (do (unread reader ch) s))))
 
-(defn read-symbol
+#_(defn read-symbol
   [reader _initch]
   (println "dmk read-symbol")
   (#'tr/read-symbol reader _initch))
 
+(defn- read-symbol
+  [rdr initch]
+  (println "dmk new read-symbol")
+  (let [[line column] (#'tr/starting-line-col-info rdr)]
+    (when-let [token (read-token rdr initch)]
+      (case token
+
+        ;; special symbols
+        "nil" nil
+        "true" true
+        "false" false
+        "/" '/
+
+        (or (when-let [p (parse-symbol token)]
+              (with-meta (symbol (p 0) (p 1))
+                (when line
+                  (merge
+                   (when-let [file (get-file-name rdr)]
+                     {:file file})
+                   (let [[end-line end-column] (#'tr/ending-line-col-info rdr)]
+                     {:line line
+                      :column column
+                      :end-line end-line
+                      :end-column end-column})))))
+            (err/throw-invalid rdr :symbol token))))))
+
 (defn read-arg
   [rdr pct opts pending-forms]
-  (if-not (thread-bound? #'arg-env)
+  (if-not (thread-bound? #'tr/arg-env)
     (read-symbol rdr pct)
     (let [ch (peek-char rdr)]
       (cond
        (or (whitespace? ch)
            (macro-terminating? ch)
            (nil? ch))
-       (#tr/register-arg 1)
+       (#'tr/register-arg 1)
 
        (identical? ch \&)
        (do (read-char rdr)
-           (#tr/register-arg -1))
+           (#'tr/register-arg -1))
 
        :else
        (let [n (read* rdr true nil opts pending-forms)]
          (if-not (integer? n)
            (throw (IllegalStateException. "Arg literal must be %, %& or %integer"))
-           (#tr/register-arg n)))))))
+           (#'tr/register-arg n)))))))
 
 (defn read-escaped-symbol
   [reader _initch _opts _pending-forms]
   (println "dmk read-escaped-symbol")
   (#'tr/read-symbol reader _initch))
-
-(defn parse-symbol
-  "Parses a string into a vector of the namespace and symbol.
-  Doesn't enforce anything"
-  [^String token]
-  (let [ns-idx (.indexOf token "/")]
-    (cond
-      (neg? ns-idx) [nil token]
-      (pos? ns-idx) [(subs token 0 ns-idx) (subs token (inc ns-idx))]
-      (= 1 (count token)) [nil "/"]
-      :else [(subs token 0 ns-idx) (subs token (inc ns-idx))])))
 
 (defn read-keyword
   [reader _initch _opts _pending-forms]
