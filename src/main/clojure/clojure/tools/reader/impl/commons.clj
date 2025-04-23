@@ -36,12 +36,17 @@
       ch)))
 
 (defn skip-line
-  "Advances the reader to the end of a line. Returns the reader"
+  "Advances the reader to the end of a line.
+  Supports CR, LF, or CRLF line endings.
+  Returns the reader"
   [reader]
   (loop []
-    (when-not (newline? (read-char reader))
-      (recur)))
-  reader)
+    (case (read-char reader)
+      (nil \newline) reader
+      \return (if (newline? (peek-char reader))
+                (recur)
+                reader)
+      (recur))))
 
 (def ^Pattern int-pattern #"([-+]?)(?:(0)|([1-9][0-9]*)|0[xX]([0-9A-Fa-f]+)|0([0-7]+)|([1-9][0-9]?)[rR]([0-9A-Za-z]+)|0[0-9]+)(N)?")
 (def ^Pattern ratio-pattern #"([-+]?[0-9]+)/([0-9]+)")
