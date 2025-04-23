@@ -181,6 +181,18 @@
   (println "dmk read-comment")
   (rc/read-comment reader _initch _opts _pending-forms))
 
+(defn read-comment
+  [reader _initch _opts _pending-forms]
+  (println "dmk raw read-comment")
+  (if (not= \\ (peek-char reader))
+    (rc/skip-line reader)
+    (do
+      (read-char reader) ;; skip \\
+      (if (= \R (peek-char reader))
+        (let [[_delim _s] (read-raw-block reader \( \) \;)]
+          reader)
+        (rc/skip-line reader)))))
+
 (defn read-number
   [reader _initch]
   (println "dmk read-number")
