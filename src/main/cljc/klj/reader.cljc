@@ -5,7 +5,8 @@
   (:require
     [clojure.string :as str]
     #?@(:clj
-        [[clojure.tools.reader :as tr]
+        [[clojure.set :as set]
+         [clojure.tools.reader :as tr]
          [clojure.tools.reader.impl.commons :as rc]
          [clojure.tools.reader.impl.errors :as err]
          [clojure.tools.reader.impl.utils :refer [ex-info? whitespace?]]
@@ -19,6 +20,32 @@
          [cljs.tools.reader.reader-types :as rt]]))
   (:import (clojure.tools.reader.reader_types SourceLoggingPushbackReader)
            (java.util List LinkedList)))
+
+(def opening-delim? #{\( \{ \[})
+(def closing-delim? #{\) \} \]})
+(def delim? (set/union opening-delim? closing-delim?))
+
+(defn terminating? [ch]
+  (or (nil? ch) (Character/isWhitespace ^Character ch) (closing-delim? ch)))
+
+(defn needs-escape? [ch]
+  (case ch
+    (\" \( \) \[ \] \{ \}) true
+    false))
+
+(defn token-terminating? [ch]
+  (or (Character/isWhitespace ^Character ch) (needs-escape? ch)))
+
+(defn- macro-terminating? [ch]
+  (case ch
+    (\" \; \@ \^ \` \~ \( \) \[ \] \{ \} \\) true
+    false))
+
+(defn read-sym-or [macro-fn]
+  (fn [rdr ch opt pending-forms]
+    (if (terminating? (peek-char rdr))
+      (symbol (str ch))
+      (macro-fn rdr ch opt pending-forms))))
 
 ;; ## Helpers
 
@@ -81,10 +108,63 @@
                            (recur 0 (inc j)))))))
            (.toString buf))))]))
 
-(defn read-char*
+(defn read-token
+  ^String [reader initch]
+  (loop [sb (StringBuilder.) ch initch]
+    (cond
+      (nil? ch) (str sb)
+      (token-terminating? ch) (do (unread reader ch)
+                                  (str sb))
+      (identical? \\ ch) (recur (doto sb (.append (#'tr/escape-char reader)))
+                                (read-char reader))
+      :else (recur (doto sb (.append ch)) (read-char reader)))))
+
+#_(defn read-char*
   [reader _initch _opts _pending-forms]
   (println "dmk read-char*")
   (#'tr/read-char* reader _initch _opts _pending-forms))
+
+(defn- read-char*
+  "Read in a character literal"
+  [rdr _backslash _opts _pending-forms]
+  (println "dmk read-char*")
+  (let [ch (read-char rdr)]
+    (if-not (nil? ch)
+      (let [token (if (or (#'tr/macro-terminating? ch)
+                          (whitespace? ch))
+                    (str ch)
+                    (read-token rdr ch))
+            token-len (count token)]
+        (cond
+
+         (== 1 token-len)  (Character/valueOf (nth token 0))
+
+         (= token "newline") \newline
+         (= token "space") \space
+         (= token "tab") \tab
+         (= token "backspace") \backspace
+         (= token "formfeed") \formfeed
+         (= token "return") \return
+
+         (.startsWith token "u")
+         (let [c (#'tr/read-unicode-char token 1 4 16)
+               ic (int c)]
+           (if (and (> ic #'tr/upper-limit)
+                    (< ic #'tr/lower-limit))
+             (err/throw-invalid-character-literal rdr (Integer/toString ic 16))
+             c))
+
+         (.startsWith token "o")
+         (let [len (dec token-len)]
+           (if (> len 3)
+             (err/throw-invalid-octal-len rdr token)
+             (let [uc (#'tr/read-unicode-char token 1 len 8)]
+               (if (> (int uc) 0377)
+                 (err/throw-bad-octal-number rdr)
+                 uc))))
+
+         :else (err/throw-unsupported-character rdr token)))
+      (err/throw-eof-in-character rdr))))
 
 (defn read-comment
   [reader _initch _opts _pending-forms]
@@ -116,8 +196,9 @@
   (let [s (read-string* reader _initch _opts _pending-forms)
         ch (read-char reader)]
     (case ch
-      \: (keyword s)
-      \' (symbol s)
+      (\: \k) (keyword s)
+      (\' \~ \s) (symbol s)
+      \c (first s) ; TODO: ensure length is one
       (do (unread reader ch) s))))
 
 (defn read-symbol
@@ -125,26 +206,58 @@
   (println "dmk read-symbol")
   (#'tr/read-symbol reader _initch))
 
+(defn read-arg
+  [rdr pct opts pending-forms]
+  (if-not (thread-bound? #'arg-env)
+    (read-symbol rdr pct)
+    (let [ch (peek-char rdr)]
+      (cond
+       (or (whitespace? ch)
+           (macro-terminating? ch)
+           (nil? ch))
+       (#tr/register-arg 1)
+
+       (identical? ch \&)
+       (do (read-char rdr)
+           (#tr/register-arg -1))
+
+       :else
+       (let [n (read* rdr true nil opts pending-forms)]
+         (if-not (integer? n)
+           (throw (IllegalStateException. "Arg literal must be %, %& or %integer"))
+           (#tr/register-arg n)))))))
+
 (defn read-escaped-symbol
   [reader _initch _opts _pending-forms]
   (println "dmk read-escaped-symbol")
   (#'tr/read-symbol reader _initch))
 
+(defn parse-symbol
+  "Parses a string into a vector of the namespace and symbol.
+  Doesn't enforce anything"
+  [^String token]
+  (let [ns-idx (.indexOf token "/")]
+    (cond
+      (neg? ns-idx) [nil token]
+      (pos? ns-idx) [(subs token 0 ns-idx) (subs token (inc ns-idx))]
+      (= 1 (count token)) [nil "/"]
+      :else [(subs token 0 ns-idx) (subs token (inc ns-idx))])))
+
 (defn read-keyword
   [reader _initch _opts _pending-forms]
   (println "dmk read-keyword")
-  (#'tr/read-keyword reader _initch _opts _pending-forms)
-  #_(err/throw-invalid reader :keyword "dmk just throw for now")
-  #_(let [ch (read-char reader)]
+  #_(#'tr/read-keyword reader _initch _opts _pending-forms)
+  (let [ch (read-char reader)]
     (if-not (whitespace? ch)
-      (let [token (read-token reader :keyword ch)
+      (let [token (read-token reader ch)
+            _ (println "dmk token " token)
             s (parse-symbol token)]
         (if s
           (let [^String ns (s 0)
                 ^String name (s 1)]
             (if (identical? \: (nth token 0))
               (if ns
-                (let [ns (resolve-alias (symbol (subs ns 1)))]
+                (let [ns (#'tr/resolve-alias (symbol (subs ns 1)))]
                   (if ns
                     (keyword (str ns) name)
                     (err/throw-invalid reader :keyword (str \: token))))
@@ -155,25 +268,37 @@
 
 (declare read-dispatch)
 
+(def read-sym-or-comment (read-sym-or read-comment))
+(def read-sym-or-deref
+  (read-sym-or (#'tr/wrapping-reader 'clojure.core/deref)))
+(def read-sym-or-keyword (read-sym-or read-keyword))
+(def read-sym-or-meta (read-sym-or #'tr/read-meta))
+(def read-sym-or-quote
+  (read-sym-or (#'tr/wrapping-reader 'quote)))
+(def read-sym-or-syntax-quote (read-sym-or #'tr/read-syntax-quote))
+(def read-sym-or-unquote (read-sym-or #'tr/read-unquote))
+(def read-sym-or-char (read-sym-or read-char*))
+(def read-sym-or-dispatch (read-sym-or read-dispatch))
+
 (defn macros [ch]
   (case ch
     \" read-quoted-name
-    \: read-keyword #_#'tr/read-keyword
-    \; read-comment
-    \' (#'tr/wrapping-reader 'quote)
-    \@ (#'tr/wrapping-reader 'clojure.core/deref)
-    \^ #'tr/read-meta
-    \` #'tr/read-syntax-quote ;;(wrapping-reader 'syntax-quote)
-    \~ #'tr/read-unquote
+    \: read-sym-or-keyword #_read-keyword
+    \; read-sym-or-comment
+    \' read-sym-or-quote #_(#'tr/wrapping-reader 'quote)
+    \@ read-sym-or-deref #_(#'tr/wrapping-reader 'clojure.core/deref)
+    \^ read-sym-or-meta #_#'tr/read-meta
+    \` read-sym-or-syntax-quote #_#'tr/read-syntax-quote
+    \~ read-sym-or-unquote #_#'tr/read-unquote
     \( #'tr/read-list
     \) #'tr/read-unmatched-delimiter
     \[ #'tr/read-vector
     \] #'tr/read-unmatched-delimiter
     \{ #'tr/read-map
     \} #'tr/read-unmatched-delimiter
-    \\ read-char*
+    \\ read-sym-or-char #_read-char*
     \% #'tr/read-arg
-    \# read-dispatch #_#'tr/read-dispatch
+    \# read-sym-or-dispatch #_read-dispatch
     nil))
 
 (defn dispatch-macros [ch]
@@ -210,9 +335,9 @@
 ;;; so that `read*` uses my `macros`, `read-number` and
 ;;; `read-symbol`.
 
-(defn read*
+(defn read-klj
   ([reader eof-error? sentinel opts pending-forms]
-     (read* reader eof-error? sentinel nil opts pending-forms))
+     (read-klj reader eof-error? sentinel nil opts pending-forms))
   ([reader eof-error? sentinel return-on opts pending-forms]
      (when (= :unknown tr/*read-eval*)
        (err/reader-error "Reading disallowed - *read-eval* bound to :unknown"))
@@ -255,14 +380,14 @@
                             e)))))))
 
 (defn read [& args]
-  (binding [tr/read* read*]
+  (binding [tr/read* read-klj]
      (apply tr/read args)))
 
 (defn read-string [& args]
-  (binding [tr/read* read*]
+  (binding [tr/read* read-klj]
      (apply tr/read-string args)))
 
 (defn read+string [& args]
-  (binding [tr/read* read*]
+  (binding [tr/read* read-klj]
      (apply tr/read-string args)))
 
