@@ -130,12 +130,49 @@
                                 (read-char reader))
       :else (recur (doto sb (.append ch)) (read-char reader)))))
 
-#_(defn read-char*
-  [reader _initch _opts _pending-forms]
-  (println "dmk read-char*")
-  (#'tr/read-char* reader _initch _opts _pending-forms))
+(def ^:const upper-limit (int \uD7ff))
+(def ^:const lower-limit (int \uE000))
 
-(defn- read-char*
+(defn read-char*
+  [reader backslash _opts _pending-forms]
+  (println "dmk new read-char*" backslash)
+  (when (nil? (peek-char reader))
+    (err/throw-eof-error reader nil))
+  (let [ch (if (#{\\ \" \( \) \{ \} \[ \]}
+                 (peek-char reader))
+             backslash (read-char reader))
+        token (read-token reader ch)
+        token-len (count token)
+        #_#_[sym-ns sym-name] (parse-symbol token)]
+    #_(symbol sym-ns sym-name)
+    (cond
+      (== 1 token-len) (Character/valueOf (nth token 0))
+      (= token "newline") \newline
+      (= token "space") \space
+      (= token "tab") \tab
+      (= token "backspace") \backspace
+      (= token "formfeed") \formfeed
+      (= token "return") \return
+      (.startsWith token "u")
+      (let [c (#'tr/read-unicode-char token 1 4 16)
+            ic (int c)]
+        (if (and (> ic upper-limit)
+                 (< ic lower-limit))
+          (err/throw-invalid-character-literal reader (Integer/toString ic 16))
+          c))
+      (.startsWith token "o")
+      (let [len (dec token-len)]
+        (if (> len 3)
+          (err/throw-invalid-octal-len reader token)
+          (let [uc (#'tr/read-unicode-char token 1 len 8)]
+            (if (> (int uc) 0377)
+              (err/throw-bad-octal-number reader)
+              uc))))
+      :else (let [[sym-ns sym-name] (parse-symbol token)]
+              (symbol sym-ns sym-name))
+      )))
+
+#_(defn read-char*
   "Read in a character literal"
   [rdr _backslash _opts _pending-forms]
   (println "dmk read-char*")
@@ -277,8 +314,16 @@
 
 (defn read-escaped-symbol
   [reader _initch _opts _pending-forms]
-  (println "dmk read-escaped-symbol")
-  (#'tr/read-symbol reader _initch))
+  (println "dmk read-escaped-symbol" _initch)
+  (when (nil? (peek-char reader))
+    (err/throw-eof-error reader nil))
+  (let [ch (if (#{\b \f \n \o \r \t \u
+                  \" \( \) \{ \} \[ \]}
+                 (peek-char reader))
+             _initch (read-char reader))
+        token (read-token reader ch)
+        [sym-ns sym-name] (parse-symbol token)]
+    (symbol sym-ns sym-name)))
 
 (defn read-keyword
   [reader _initch _opts _pending-forms]
