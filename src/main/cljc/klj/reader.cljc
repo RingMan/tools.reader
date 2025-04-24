@@ -169,8 +169,9 @@
               (err/throw-bad-octal-number reader)
               uc))))
       :else (let [[sym-ns sym-name] (parse-symbol token)]
-              (symbol sym-ns sym-name))
-      )))
+              (if (str/ends-with? sym-name ":")
+                (keyword sym-ns (subs sym-name 0 (dec (count sym-name))))
+                (symbol sym-ns sym-name))))))
 
 #_(defn read-char*
   "Read in a character literal"
@@ -260,11 +261,6 @@
       \c (first s) ; TODO: ensure length is one
       (do (unread reader ch) s))))
 
-#_(defn read-symbol
-  [reader _initch]
-  (println "dmk read-symbol")
-  (#'tr/read-symbol reader _initch))
-
 (defn- read-symbol
   [rdr initch]
   (println "dmk new read-symbol")
@@ -278,17 +274,20 @@
         "false" false
         "/" '/
 
-        (or (when-let [p (parse-symbol token)]
-              (with-meta (symbol (p 0) (p 1))
-                (when line
-                  (merge
-                   (when-let [file (get-file-name rdr)]
-                     {:file file})
-                   (let [[end-line end-column] (#'tr/ending-line-col-info rdr)]
-                     {:line line
-                      :column column
-                      :end-line end-line
-                      :end-column end-column})))))
+        (or (when-let [[sym-ns sym-name :as p] (parse-symbol token)]
+              (if (str/ends-with? sym-name ":")
+                (keyword sym-ns (subs sym-name 0 (dec (count sym-name))))
+                (with-meta
+                  (symbol (p 0) (p 1))
+                  (when line
+                    (merge
+                      (when-let [file (get-file-name rdr)]
+                        {:file file})
+                      (let [[end-line end-column] (#'tr/ending-line-col-info rdr)]
+                        {:line line
+                         :column column
+                         :end-line end-line
+                         :end-column end-column}))))))
             (err/throw-invalid rdr :symbol token))))))
 
 (defn read-arg
@@ -307,7 +306,7 @@
            (#'tr/register-arg -1))
 
        :else
-       (let [n (read* rdr true nil opts pending-forms)]
+       (let [n (read-klj rdr true nil opts pending-forms)]
          (if-not (integer? n)
            (throw (IllegalStateException. "Arg literal must be %, %& or %integer"))
            (#'tr/register-arg n)))))))
