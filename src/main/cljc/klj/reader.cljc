@@ -5,20 +5,21 @@
   (:require
     [clojure.string :as str]
     #?@(:clj
-        [[clojure.set :as set]
+        [[clojure.java.io :as io]
+         [clojure.set :as set]
          [clojure.tools.reader :as tr]
          [clojure.tools.reader.impl.commons :as rc]
          [clojure.tools.reader.impl.errors :as err]
          [clojure.tools.reader.impl.utils :refer [ex-info? whitespace?]]
          [clojure.tools.reader.reader-types :refer
-          [read-char unread peek-char indexing-reader? source-logging-push-back-reader source-logging-reader?
+          [read-char unread peek-char indexing-push-back-reader indexing-reader? source-logging-push-back-reader source-logging-reader?
            get-line-number get-column-number get-file-name string-push-back-reader log-source]]]
         :cljs
         [[cljs.tools.reader :as tr]
          [cljs.tools.reader.impl.commons :as rc]
          [cljs.tools.reader.impl.errors :as err]
          [cljs.tools.reader.reader-types :as rt]]))
-  (:import (clojure.tools.reader.reader_types SourceLoggingPushbackReader)
+  (:import (clojure.tools.reader.reader_types IndexingPushbackReader SourceLoggingPushbackReader)
            (java.util List LinkedList)))
 
 (def opening-delim? #{\( \{ \[})
@@ -89,6 +90,29 @@
     reader
     (complement p?)
     (p? nil)))
+
+(defn read-to-suffix
+  "Reads up to given `suffix`.
+  Returns string of chars up to suffix.
+  Reader is positioned just _after_ the suffix."
+  [#?(:cljs ^not-native reader :default reader) suffix]
+  (println "dmk read-to-suffix")
+  (let [buf (StringBuffer.)
+        n (count suffix)]
+    (loop [ix 0 j 1]
+      (if (< ix n)
+        (let [c (read-char reader)]
+          (cond
+            (nil? c) (err/throw-eof-error reader nil)
+            (= c (nth suffix ix)) (recur (inc ix) (inc j))
+            :else (do
+                    (.append buf (subs suffix 0 ix))
+                    (if (= c (first suffix))
+                      (recur 1 (inc j))
+                      (do
+                        (.append buf c)
+                        (recur 0 (inc j)))))))
+        (str buf)))))
 
 (defn read-raw-block
   "Helper to read code in a raw block starting with `\\R`
@@ -378,7 +402,7 @@
     \{ #'tr/read-map
     \} #'tr/read-unmatched-delimiter
     \\ read-sym-or-char #_read-char*
-    \% #'tr/read-arg
+    \% read-arg
     \# read-sym-or-dispatch #_read-dispatch
     nil))
 
@@ -416,6 +440,28 @@
 ;;; so that `read*` uses my `macros`, `read-number` and
 ;;; `read-symbol`.
 
+(defn skip-comments [reader]
+  (when-let [ch (read-char reader)]
+    (case ch
+      \# (if (identical? \space (peek-char reader))
+           (do (rc/skip-line reader) (recur reader))
+           ch)
+      \/ (case (peek-char reader)
+           \/ (do (rc/skip-line reader) (recur reader))
+           \* (do (read-to-suffix reader "*/") (recur reader))
+           ch)
+      \; (let [ch2 (peek-char reader)
+               suffix (case ch2
+                        \( ");"
+                        \[ "];"
+                        \{ "};"
+                        \< ">;"
+                        nil)]
+           (if suffix
+             (do (read-to-suffix reader suffix) (recur reader))
+             ch))
+      ch)))
+
 (defn read-klj
   ([reader eof-error? sentinel opts pending-forms]
      (read-klj reader eof-error? sentinel nil opts pending-forms))
@@ -427,7 +473,7 @@
          (let [ret (log-source reader
                      (if (seq pending-forms)
                        (.remove ^List pending-forms 0)
-                       (let [ch (read-char reader)]
+                       (let [ch (skip-comments reader)]
                          (cond
                            (whitespace? ch) reader
                            (nil? ch) (if eof-error? (err/throw-eof-error reader nil) sentinel)
@@ -471,4 +517,31 @@
 (defn read+string [& args]
   (binding [tr/read* read-klj]
      (apply tr/read-string args)))
+
+#?(:clj
+   (defn file-reader
+     "Create reader for files."
+     ^IndexingPushbackReader
+     [f]
+     (-> (io/file f)
+         (io/reader)
+         (indexing-push-back-reader 2))))
+
+(defn string-reader
+  "Create reader for strings."
+  [s]
+  (indexing-push-back-reader s 2))
+
+(defn load-reader [rdr]
+  (let [EOF (Object.)]
+     (loop [ret nil, r (read rdr false EOF)]
+       (cond
+         (identical? EOF r) ret
+         :else (recur (eval r) (read rdr false EOF))))))
+
+(defn load-string [s]
+  (load-reader (string-reader s)))
+
+(defn load-file [f]
+  (load-reader (file-reader f)))
 
