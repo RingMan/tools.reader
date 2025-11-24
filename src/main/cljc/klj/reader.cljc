@@ -314,6 +314,8 @@
                          :end-column end-column}))))))
             (err/throw-invalid rdr :symbol token))))))
 
+(declare read-klj)
+
 (defn read-arg
   [rdr pct opts pending-forms]
   (if-not (thread-bound? #'tr/arg-env)
