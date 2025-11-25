@@ -385,7 +385,7 @@
 (def read-sym-or-syntax-quote (read-sym-or #'tr/read-syntax-quote))
 (def read-sym-or-unquote (read-sym-or #'tr/read-unquote))
 (def read-sym-or-char (read-sym-or read-char*))
-(def read-sym-or-dispatch (read-sym-or read-dispatch))
+(def read-sym-or-dispatch (read-sym-or #'read-dispatch))
 
 (defn macros [ch]
   (case ch
