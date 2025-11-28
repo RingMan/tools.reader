@@ -22,6 +22,25 @@
   (:import (clojure.tools.reader.reader_types IndexingPushbackReader SourceLoggingPushbackReader)
            (java.util List LinkedList)))
 
+(def kwd-chars-need-quoting #"^[#':]|::|:$|[(){}\[\]\x08 \t\\\r\n\f\v,;\"@^`~]")
+(def sym-chars-need-quoting #"^(true|false|nil)$|^[+-]?[0-9]|^[#':]|::|:$|[(){}\[\]\x08 \t\\\r\n\f\v,;\"@^`~]")
+
+(defmethod print-method clojure.lang.Keyword [o, ^Writer w]
+  (let [s (.substring (str o) 1)
+        quote? (re-find kwd-chars-need-quoting s)]
+    (if quote?
+      (.write w (str (pr-str s) \:))
+      (.write w (str \: s)))))
+
+(defmethod print-method clojure.lang.Symbol [o, ^Writer w]
+  ;; Use var since `print-meta` is private
+  (#'clojure.core/print-meta o w)
+  (let [s (str o)
+        quote? (re-find sym-chars-need-quoting s)]
+    (if quote?
+      (.write w (str (pr-str s) \~))
+      (.write w s))))
+
 (def opening-delim? #{\( \{ \[})
 (def closing-delim? #{\) \} \]})
 (def delim? (set/union opening-delim? closing-delim?))
