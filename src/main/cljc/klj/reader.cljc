@@ -115,7 +115,7 @@
   Returns string of chars up to suffix.
   Reader is positioned just _after_ the suffix."
   [#?(:cljs ^not-native reader :default reader) suffix]
-  (println "dmk read-to-suffix")
+  ;; (println "dmk read-to-suffix")
   (let [buf (StringBuffer.)
         n (count suffix)]
     (loop [ix 0 j 1]
@@ -138,7 +138,7 @@
   Reader should be positioned at beginning of optional tag.
   Returns tuple of tag and the content between `lch` and `rch`"
   [#?(:cljs ^not-native reader :default reader) lch rch termch]
-  (println "dmk read-raw-block")
+  ;; (println "dmk read-raw-block")
   (read-char reader) ;; skip \R
   (let [delim (read-until reader #(= % lch))
         _ (println {:delim delim})
@@ -178,7 +178,7 @@
 
 (defn read-char*
   [reader backslash _opts _pending-forms]
-  (println "dmk new read-char*" backslash)
+  ;; (println "dmk new read-char*" backslash)
   (when (nil? (peek-char reader))
     (err/throw-eof-error reader nil))
   (let [ch (if (#{\\ \" \( \) \{ \} \[ \]}
@@ -259,12 +259,12 @@
 
 (defn read-comment
   [reader _initch _opts _pending-forms]
-  (println "dmk read-comment")
+  ;; (println "dmk read-comment")
   (rc/read-comment reader _initch _opts _pending-forms))
 
 (defn read-comment
   [reader _initch _opts _pending-forms]
-  (println "dmk raw read-comment")
+  ;; (println "dmk raw read-comment")
   (if (not= \\ (peek-char reader))
     (rc/skip-line reader)
     (do
@@ -276,12 +276,12 @@
 
 (defn read-number
   [reader _initch]
-  (println "dmk read-number")
+  ;; (println "dmk read-number")
   (#'tr/read-number reader _initch))
 
 (defn read-string*
   [reader _initch _opts _pending-forms]
-  (println "dmk read-string*")
+  ;; (println "dmk read-string*")
   (if (not= \\ (peek-char reader))
     (#'tr/read-string* reader _initch _opts _pending-forms)
     (do
@@ -295,7 +295,7 @@
 
 (defn read-quoted-name
   [reader _initch _opts _pending-forms]
-  (println "dmk read-quoted-name")
+  ;; (println "dmk read-quoted-name")
   (let [s (read-string* reader _initch _opts _pending-forms)
         ch (read-char reader)]
     (case ch
@@ -306,7 +306,7 @@
 
 (defn- read-symbol
   [rdr initch]
-  (println "dmk new read-symbol")
+  ;; (println "dmk new read-symbol")
   (let [[line column] (#'tr/starting-line-col-info rdr)]
     (when-let [token (read-token rdr initch)]
       (case token
@@ -358,7 +358,7 @@
 
 (defn read-escaped-symbol
   [reader _initch _opts _pending-forms]
-  (println "dmk read-escaped-symbol" _initch)
+  ;; (println "dmk read-escaped-symbol" _initch)
   (when (nil? (peek-char reader))
     (err/throw-eof-error reader nil))
   (let [ch (if (#{\b \f \n \o \r \t \u
@@ -371,12 +371,12 @@
 
 (defn read-keyword
   [reader _initch _opts _pending-forms]
-  (println "dmk read-keyword")
+  ;; (println "dmk read-keyword")
   #_(#'tr/read-keyword reader _initch _opts _pending-forms)
   (let [ch (read-char reader)]
     (if-not (whitespace? ch)
       (let [token (read-token reader ch)
-            _ (println "dmk token " token)
+            ;; _ (println "dmk token " token)
             s (parse-symbol token)]
         (if s
           (let [^String ns (s 0)
