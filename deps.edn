@@ -6,6 +6,7 @@
   :cljs-repl {:main-opts   ["-m" "cljs.main" "-v" "-co" "build/dev.edn" "-re" "node" "-r"]}
   :cljs-adv  {:main-opts   ["-m" "cljs.main" "-v" "-co" "build/adv.edn" "-c"]}
   :cljs-simp {:main-opts   ["-m" "cljs.main" "-v" "-co" "build/simp.edn" "-c"]}
+  :dev {:extra-paths ["src/test/clojure" "src/test/cljc"]}
   :nrepl {:extra-deps {nrepl/nrepl {:mvn/version "1.3.1"}
                        cider/cider-nrepl {:mvn/version "0.53.2"}
                        refactor-nrepl/refactor-nrepl {:mvn/version "3.10.0"}}
