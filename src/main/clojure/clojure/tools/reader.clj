@@ -917,7 +917,7 @@
 
 (def ^:dynamic read*
   "Override this to use a custom reader with custom reader and dispatch macros."
-  default-read)
+  #'default-read)
 
 (def ^:dynamic *suppress-read* false)
 
