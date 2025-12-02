@@ -301,7 +301,7 @@
         ch (read-char reader)]
     (case ch
       (\: \k) (keyword s)
-      (\' \~ \s) (symbol s)
+      (\~ \s) (symbol s)
       \c (first s) ; TODO: ensure length is one
       (do (unread reader ch) s))))
 
