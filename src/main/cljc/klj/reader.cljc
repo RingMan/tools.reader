@@ -478,6 +478,9 @@
                         \[ "];"
                         \{ "};"
                         \< ">;"
+                        \" "\";"
+                        \' "';"
+                        \| "|;"
                         nil)]
            (if suffix
              (do (read-to-suffix reader suffix) (recur reader))
