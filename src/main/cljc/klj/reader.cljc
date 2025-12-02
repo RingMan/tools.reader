@@ -20,6 +20,7 @@
          [cljs.tools.reader.impl.errors :as err]
          [cljs.tools.reader.reader-types :as rt]]))
   (:import (clojure.tools.reader.reader_types IndexingPushbackReader SourceLoggingPushbackReader)
+           (java.io Writer)
            (java.util List LinkedList)))
 
 (def kwd-chars-need-quoting #"^[#':]|::|:$|[(){}\[\]\x08 \t\\\r\n\f\v,;\"@^`~]")
