@@ -217,6 +217,7 @@
   (is (= "foo//" (str (read-string "foo//"))))
   (is (java.lang.Double/isNaN ^double (read-string "##NaN")))
   (is (java.lang.Double/isInfinite ^double (read-string "##Inf")))
+  (is (java.lang.Double/isInfinite ^double (read-string "##+Inf")))
   (is (java.lang.Double/isInfinite ^double (read-string "##-Inf")))
   (testing "Correct array class symbols"
     (doseq [n (range 1 10)

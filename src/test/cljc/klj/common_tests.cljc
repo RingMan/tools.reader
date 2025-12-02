@@ -192,7 +192,10 @@
   (is (= "foo//" (str (read-string "foo//")))) ;; the clojure reader can't read this
   (is (= (str 'NaN) (str (read-string "##NaN"))))
   (is (= Double/POSITIVE_INFINITY (read-string "##Inf")))
-  (is (= Double/NEGATIVE_INFINITY (read-string "##-Inf"))))
+  (is (= Double/POSITIVE_INFINITY (read-string "##+Inf")))
+  (is (= Double/NEGATIVE_INFINITY (read-string "##-Inf")))
+  (is (= Math/E (read-string "##E")))
+  (is (= Math/PI (read-string "##PI"))))
 
 (deftest read-specials
   (is (= 'nil nil))

@@ -393,6 +393,18 @@
           (err/throw-invalid reader :keyword (str \: token))))
       (err/throw-single-colon reader))))
 
+(defn- read-symbolic-value
+  [rdr _ opts pending-forms]
+  (let [sym (read-klj rdr true nil opts pending-forms)]
+    (case sym
+      Inf Double/POSITIVE_INFINITY
+      +Inf Double/POSITIVE_INFINITY
+      -Inf Double/NEGATIVE_INFINITY
+      NaN Double/NaN
+      PI Math/PI
+      E Math/E
+      (err/reader-error rdr (str "Invalid token: ##" sym)))))
+
 (declare read-dispatch)
 
 (def read-sym-or-comment (read-sym-or read-comment))
@@ -441,7 +453,7 @@
     \_ #'tr/read-discard
     \? #'tr/read-cond
     \: #'tr/read-namespaced-map
-    \# #'tr/read-symbolic-value
+    \# read-symbolic-value
     \\ read-escaped-symbol
     nil))
 
