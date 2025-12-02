@@ -362,8 +362,8 @@
   ;; (println "dmk read-escaped-symbol" _initch)
   (when (nil? (peek-char reader))
     (err/throw-eof-error reader nil))
-  (let [ch (if (#{\b \f \n \o \r \t \u
-                  \" \( \) \{ \} \[ \]}
+  (let [ch (if (#{\b \f \n \o \r \s \t \u
+                  \\ \" \( \) \{ \} \[ \]}
                  (peek-char reader))
              _initch (read-char reader))
         token (read-token reader ch)
