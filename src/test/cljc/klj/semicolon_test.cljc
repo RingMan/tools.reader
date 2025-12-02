@@ -44,5 +44,17 @@
   (testing "Semicolon at _start_ of symbol must be escaped"
     (are [x y] (= x (read-string y))
          (symbol ";a") "\\;a"
-         (symbol ";;") "\\;;")))
+         (symbol ";;") "\\;;;"))
+  (testing "Semicolon just _after_ a form is a separate symbol"
+    (are [x] (let [s (pr-str x)]
+               (= [x semi] (try
+                             (read-string (str \[ s \; \]))
+                             (catch Exception e :error))))
+         ##Inf ##-Inf [] () {} #{}
+         \tab \newline \a \;
+         true false nil 42 "hi" :kwd)
+    (let [[a b] (read-string "[##NaN;]")]
+      (is (Double/isNaN a))
+      (is (= semi b)))
+    (is (= ['sym semi] (read-string "[sym;]")))))
 

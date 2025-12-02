@@ -165,14 +165,20 @@
 
 (defn read-token
   ^String [reader initch]
-  (loop [sb (StringBuilder.) ch initch]
+  (loop [sb (StringBuilder.) ch initch first? true]
     (cond
       (nil? ch) (str sb)
       (token-terminating? ch) (do (unread reader ch)
                                   (str sb))
       (identical? \\ ch) (recur (doto sb (.append (#'tr/escape-char reader)))
-                                (read-char reader))
-      :else (recur (doto sb (.append ch)) (read-char reader)))))
+                                (read-char reader)
+                                false)
+      (or first? (not= ch \;))
+        (recur (doto sb (.append ch)) (read-char reader) false)
+      (terminating? (peek-char reader)) (do (unread reader ch) (str sb))
+      (opening-delim? (peek-char reader))
+        (throw (IllegalStateException. "Expected EOF, white space or closing delimiter after semicolon at end of token."))
+      :else (recur (doto sb (.append ch)) (read-char reader) false))))
 
 (def ^:const upper-limit (int \uD7ff))
 (def ^:const lower-limit (int \uE000))
