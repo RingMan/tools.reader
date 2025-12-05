@@ -62,22 +62,22 @@
 
 (deftest read-tagged
   (is (= #inst "2010-11-12T13:14:15.666"
-          (read-string "#inst \"2010-11-12T13:14:15.666\"")))
+         (read-string "#inst \"2010-11-12T13:14:15.666\"")))
   (is (= #inst "2010-11-12T13:14:15.666"
-          (read-string "#inst\"2010-11-12T13:14:15.666\"")))
+         (read-string "#inst\"2010-11-12T13:14:15.666\"")))
   ;; (is (= #uuid "550e8400-e29b-41d4-a716-446655440000"
-            ;;        (read-string "#uuid \"550e8400-e29b-41d4-a716-446655440000\"")))
+  ;;        (read-string "#uuid \"550e8400-e29b-41d4-a716-446655440000\"")))
   ;; (is (= #uuid "550e8400-e29b-41d4-a716-446655440000"
-            ;;        (read-string "#uuid\"550e8400-e29b-41d4-a716-446655440000\"")))
+  ;;        (read-string "#uuid\"550e8400-e29b-41d4-a716-446655440000\"")))
   (is (= (java.util.UUID/fromString "550e8400-e29b-41d4-a716-446655440000")
-          (read-string "#uuid \"550e8400-e29b-41d4-a716-446655440000\"")))
+         (read-string "#uuid \"550e8400-e29b-41d4-a716-446655440000\"")))
   (is (= (java.util.UUID/fromString "550e8400-e29b-41d4-a716-446655440000")
-          (read-string "#uuid\"550e8400-e29b-41d4-a716-446655440000\"")))
+         (read-string "#uuid\"550e8400-e29b-41d4-a716-446655440000\"")))
   (when *default-data-reader-fn*
     (let [my-unknown (fn [tag val] {:unknown-tag tag :value val})]
       (is (= {:unknown-tag 'foo :value 'bar}
-              (binding [*default-data-reader-fn* my-unknown]
-                (read-string "#foo bar")))))))
+             (binding [*default-data-reader-fn* my-unknown]
+               (read-string "#foo bar")))))))
 
 (defrecord foo [])
 (defrecord bar [baz buz])
@@ -101,46 +101,46 @@
 (deftest reader-conditionals
   (let [opts {:read-cond :allow :features #{:clj}}]
     (are [out s opts] (= out (read-string opts s))
-          ;; basic read-cond
-          '[foo-form] "[#?(:foo foo-form :bar bar-form)]" {:read-cond :allow :features #{:foo}}
-          '[bar-form] "[#?(:foo foo-form :bar bar-form)]" {:read-cond :allow :features #{:bar}}
-          '[foo-form] "[#?(:foo foo-form :bar bar-form)]" {:read-cond :allow :features #{:foo :bar}}
-          '[] "[#?(:foo foo-form :bar bar-form)]" {:read-cond :allow :features #{:baz}}
-          'nil "#?(:default nil)" opts
+         ;; basic read-cond
+         '[foo-form] "[#?(:foo foo-form :bar bar-form)]" {:read-cond :allow :features #{:foo}}
+         '[bar-form] "[#?(:foo foo-form :bar bar-form)]" {:read-cond :allow :features #{:bar}}
+         '[foo-form] "[#?(:foo foo-form :bar bar-form)]" {:read-cond :allow :features #{:foo :bar}}
+         '[] "[#?(:foo foo-form :bar bar-form)]" {:read-cond :allow :features #{:baz}}
+         'nil "#?(:default nil)" opts
 
-          ;; environmental features
-          "clojure" "#?(:clj \"clojure\" :cljs \"clojurescript\" :default \"default\")"  opts
+         ;; environmental features
+         "clojure" "#?(:clj \"clojure\" :cljs \"clojurescript\" :default \"default\")"  opts
 
-          ;; default features
-          "default" "#?(:cljr \"clr\" :cljs \"cljs\" :default \"default\")" opts
+         ;; default features
+         "default" "#?(:cljr \"clr\" :cljs \"cljs\" :default \"default\")" opts
 
-          ;; splicing
-          [] "[#?@(:clj [])]" opts
-          [:a] "[#?@(:clj [:a])]" opts
-          [:a :b] "[#?@(:clj [:a :b])]" opts
-          [:a :b :c] "[#?@(:clj [:a :b :c])]" opts
+         ;; splicing
+         [] "[#?@(:clj [])]" opts
+         [:a] "[#?@(:clj [:a])]" opts
+         [:a :b] "[#?@(:clj [:a :b])]" opts
+         [:a :b :c] "[#?@(:clj [:a :b :c])]" opts
 
-          ;; nested splicing
-          [:a :b :c :d :e] "[#?@(:clj [:a #?@(:clj [:b #?@(:clj [:c]) :d]):e])]" opts
-          '(+ 1 (+ 2 3)) "(+ #?@(:clj [1 (+ #?@(:clj [2 3]))]))" opts
-          '(+ (+ 2 3) 1) "(+ #?@(:clj [(+ #?@(:clj [2 3])) 1]))" opts
-          [:a [:b [:c] :d] :e] "[#?@(:clj [:a [#?@(:clj [:b #?@(:clj [[:c]]) :d])] :e])]" opts
+         ;; nested splicing
+         [:a :b :c :d :e] "[#?@(:clj [:a #?@(:clj [:b #?@(:clj [:c]) :d]):e])]" opts
+         '(+ 1 (+ 2 3)) "(+ #?@(:clj [1 (+ #?@(:clj [2 3]))]))" opts
+         '(+ (+ 2 3) 1) "(+ #?@(:clj [(+ #?@(:clj [2 3])) 1]))" opts
+         [:a [:b [:c] :d] :e] "[#?@(:clj [:a [#?@(:clj [:b #?@(:clj [[:c]]) :d])] :e])]" opts
 
-          ;; bypass unknown tagged literals
-          [1 2 3] "#?(:cljs #js [1 2 3] :clj [1 2 3])" opts
-          :clojure "#?(:foo #some.nonexistent.Record {:x 1} :clj :clojure)" opts)
+         ;; bypass unknown tagged literals
+         [1 2 3] "#?(:cljs #js [1 2 3] :clj [1 2 3])" opts
+         :clojure "#?(:foo #some.nonexistent.Record {:x 1} :clj :clojure)" opts)
 
     (are [re s opts] (is (thrown-with-msg? RuntimeException re (read-string opts s)))
-          #"Features must be keywords" "#?((+ 1 2) :a)" opts
-          #"even number of forms" "#?(:cljs :a :clj)" opts
-          #"read-cond-splicing must implement" "(#?@(:clj :a))" opts
-          #"is reserved" "(#?@(:foo :a :else :b))" opts
-          #"must be a list" "#?[:foo :a :else :b]" opts
-          #"Conditional read not allowed" "#?[:clj :a :default nil]" {:read-cond :BOGUS}
-          #"Conditional read not allowed" "#?[:clj :a :default nil]" {}))
+         #"Features must be keywords" "#?((+ 1 2) :a)" opts
+         #"even number of forms" "#?(:cljs :a :clj)" opts
+         #"read-cond-splicing must implement" "(#?@(:clj :a))" opts
+         #"is reserved" "(#?@(:foo :a :else :b))" opts
+         #"must be a list" "#?[:foo :a :else :b]" opts
+         #"Conditional read not allowed" "#?[:clj :a :default nil]" {:read-cond :BOGUS}
+         #"Conditional read not allowed" "#?[:clj :a :default nil]" {}))
   (binding [*data-readers* {'js (fn [v] (JSValue. v) )}]
     (is (= (JSValue. [1 2 3])
-            (read-string {:features #{:cljs} :read-cond :allow} "#?(:cljs #js [1 2 3] :foo #foo [1])")))))
+           (read-string {:features #{:cljs} :read-cond :allow} "#?(:cljs #js [1 2 3] :foo #foo [1])")))))
 
 (deftest preserve-read-cond
   ;; DMK: this test fails because klj reader treats `#f` as false.
@@ -174,8 +174,8 @@
     (is (= :foo (get tl :no-such-key :foo))))
   (testing "print form roundtrips"
     (doseq [s ["#?(:clj foo :cljs bar)"
-                "#?(:cljs #js {:x 1, :y 2})"
-                "#?(:clj #clojure.test_clojure.reader.TestRecord [42 85])"]]
+               "#?(:cljs #js {:x 1, :y 2})"
+               "#?(:clj #clojure.test_clojure.reader.TestRecord [42 85])"]]
       (is (= s (pr-str (read-string {:read-cond :preserve} s)))))))
 
 (alias 'c.c 'clojure.core)
@@ -189,11 +189,11 @@
 
 (defn multiple-reader-variants-from-string [s filename]
   [(-> (StringReader. s)
-        (LineNumberingPushbackReader.)
-        (indexing-push-back-reader 1 filename))
-    (-> (StringReader. s)
-        (BufferedReader.)
-        (indexing-push-back-reader 1 filename))])
+       (LineNumberingPushbackReader.)
+       (indexing-push-back-reader 1 filename))
+   (-> (StringReader. s)
+       (BufferedReader.)
+       (indexing-push-back-reader 1 filename))])
 
 (defn first-reads-from-multiple-readers [s]
   (for [rdr (multiple-reader-variants-from-string s "file.edn")]
@@ -226,16 +226,16 @@
       (let [rsym (read-string sym)
             rqsym (read-string qsym)]
         (is (= ((juxt namespace name) rsym)
-                ["String" (str n)]))
+               ["String" (str n)]))
         (is (= ((juxt namespace name) rqsym)
-                ["java.lang.String" (str n)])))))
+               ["java.lang.String" (str n)])))))
   (testing "Correct prim array symbols"
     (doseq [prim ["int" "long" "boolean" "byte" "char" "double" "float" "short"]]
       (doseq [n (range 1 10)
               :let [sym (str prim "/" n)]]
         (let [rsym (read-string sym)]
           (is (= ((juxt namespace name) rsym)
-                  [prim (str n)]))))))
+                 [prim (str n)]))))))
   (testing "Not array class symbols, but symbols nevertheless"
     (doseq [suffix ["" "0" "11" "1a"]
             :let [sym (str "String/" suffix)]]
