@@ -10,7 +10,7 @@
          [clojure.tools.reader :as tr]
          [clojure.tools.reader.impl.commons :as rc]
          [clojure.tools.reader.impl.errors :as err]
-         [clojure.tools.reader.impl.utils :refer [ex-info? whitespace?]]
+         [clojure.tools.reader.impl.utils :refer [ex-info? #_whitespace?]]
          [clojure.tools.reader.reader-types :refer
           [read-char unread peek-char indexing-push-back-reader indexing-reader? source-logging-push-back-reader source-logging-reader?
            get-line-number get-column-number get-file-name string-push-back-reader log-source]]]
@@ -22,6 +22,13 @@
   (:import (clojure.tools.reader.reader_types IndexingPushbackReader SourceLoggingPushbackReader)
            (java.io Writer)
            (java.util List LinkedList)))
+
+(defn whitespace?
+  "Checks whether a given character is whitespace"
+  [ch]
+  (when ch
+    (or (Character/isWhitespace ^Character ch)
+        (identical? \,  ch))))
 
 (def kwd-chars-need-quoting #"^[#':]|::|:$|[(){}\[\]\x08 \t\\\r\n\f\v,;\"@^`~]")
 (def sym-chars-need-quoting #"^(true|false|nil)$|^[+-]?[0-9]|^[#':]|::|:$|[(){}\[\]\x08 \t\\\r\n\f\v,;\"@^`~]")
