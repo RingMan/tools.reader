@@ -483,14 +483,16 @@
 (defn skip-comments [reader]
   (when-let [ch (read-char reader)]
     (case ch
-      \# (if (identical? \space (peek-char reader))
-           (do (rc/skip-line reader) (recur reader))
+      \# (case (peek-char reader)
+           \space (do (rc/skip-line reader) (recur reader))
+           \| (do (read-to-suffix reader "|#") (recur reader))
            ch)
       \/ (case (peek-char reader)
            \/ (do (rc/skip-line reader) (recur reader))
            \* (do (read-to-suffix reader "*/") (recur reader))
            ch)
       \; (let [ch2 (peek-char reader)
+               ;TODO: look up matching char
                suffix (case ch2
                         \( ");"
                         \[ "];"
@@ -499,6 +501,9 @@
                         \" "\";"
                         \' "';"
                         \| "|;"
+                        \! "!;"
+                        \* "*;"
+                        \# "#;"
                         nil)]
            (if suffix
              (do (read-to-suffix reader suffix) (recur reader))
