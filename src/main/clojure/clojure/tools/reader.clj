@@ -307,7 +307,11 @@
       nil (err/throw-eof-reading reader :string sb)
       \\ (recur (doto sb (.append (escape-char reader)))
                 (read-char reader))
-      \" (str sb)
+      \" (if (= (peek-char reader) \")
+           (do
+             (read-char reader) ;skip \"
+             (recur (doto sb (.append ch)) (read-char reader)))
+           (str sb))
       (recur (doto sb (.append ch)) (read-char reader)))))
 
 (defn- read-symbol
