@@ -180,15 +180,18 @@
       (identical? \\ ch) (recur (doto sb (.append (#'tr/escape-char reader)))
                                 (read-char reader)
                                 false)
-      (or first? (not= ch \;))
+      (or first? (not (#{\: \; \,} ch)))
         (recur (doto sb (.append ch)) (read-char reader) false)
       (terminating? (peek-char reader)) (do (unread reader ch) (str sb))
       (opening-delim? (peek-char reader))
-        (throw (IllegalStateException. "Expected EOF, white space or closing delimiter after semicolon at end of token."))
+        (throw (IllegalStateException. "Expected EOF, white space or closing delimiter after punctuation at end of token."))
       :else (recur (doto sb (.append ch)) (read-char reader) false))))
 
 (def ^:const upper-limit (int \uD7ff))
 (def ^:const lower-limit (int \uE000))
+
+(defn- peek-matches? [ch rdr]
+  (= (peek-char rdr) ch))
 
 (defn read-char*
   [reader backslash _opts _pending-forms]
@@ -226,8 +229,9 @@
               (err/throw-bad-octal-number reader)
               uc))))
       :else (let [[sym-ns sym-name] (parse-symbol token)]
-              (if (str/ends-with? sym-name ":")
-                (keyword sym-ns (subs sym-name 0 (dec (count sym-name))))
+              (if (peek-matches? \: reader)
+                (do (read-char reader)
+                    (keyword sym-ns sym-name))
                 (symbol sym-ns sym-name))))))
 
 #_(defn read-char*
@@ -293,30 +297,51 @@
   ;; (println "dmk read-number")
   (#'tr/read-number reader _initch))
 
-(defn read-string*
-  [reader _initch _opts _pending-forms]
-  ;; (println "dmk read-string*")
+(defn string-or-char [q s]
+  (case q
+    \' (if (= (count s) 1) (first s) s)
+    \" s))
+
+(defn- read-delimited-string
+  [reader quote-ch _opts _pending-forms]
+  (loop [sb (StringBuilder.)
+         ch (read-char reader)]
+    (cond
+      (nil? ch) (err/throw-eof-reading reader :string sb)
+      (= \\ ch) (recur (doto sb (.append (#'tr/escape-char reader)))
+                       (read-char reader))
+      (= quote-ch ch) (if (= (peek-char reader) quote-ch)
+                        (do
+                          (read-char reader) ;skip quote-ch
+                          (recur (doto sb (.append ch)) (read-char reader)))
+                        (str sb))
+      :else (recur (doto sb (.append ch)) (read-char reader)))))
+
+(defn read-quoted-name*
+  [reader initch _opts _pending-forms]
   (if (not= \\ (peek-char reader))
-    (#'tr/read-string* reader _initch _opts _pending-forms)
+    (read-delimited-string reader initch _opts _pending-forms)
     (do
       (read-char reader) ;; skip \\
       (if (= \R (peek-char reader))
-        (let [[_delim s] (read-raw-block reader \( \) \")]
+        (let [[_delim s] (read-raw-block reader \( \) initch)]
           s)
         (do
           (unread reader \\)
-          (#'tr/read-string* reader _initch _opts _pending-forms))))))
+          (read-delimited-string reader initch _opts _pending-forms))))))
 
 (defn read-quoted-name
-  [reader _initch _opts _pending-forms]
+  [reader initch _opts _pending-forms]
   ;; (println "dmk read-quoted-name")
-  (let [s (read-string* reader _initch _opts _pending-forms)
+  (let [s (read-quoted-name* reader initch _opts _pending-forms)
         ch (read-char reader)]
     (case ch
       (\: \k) (keyword s)
       (\~ \s) (symbol s)
-      \c (first s) ; TODO: ensure length is one
-      (do (unread reader ch) s))))
+      \c (if (= 1 (count s))
+           (first s)
+           (vec s))
+      (do (unread reader ch) (string-or-char initch s)))))
 
 (defn- read-symbol
   [rdr initch]
@@ -332,8 +357,10 @@
         "/" '/
 
         (or (when-let [[sym-ns sym-name :as p] (parse-symbol token)]
-              (if (str/ends-with? sym-name ":")
-                (keyword sym-ns (subs sym-name 0 (dec (count sym-name))))
+              ;; peek for \:
+              (if (peek-matches? \: rdr)
+                (do (read-char rdr) ;skip \:
+                    (keyword sym-ns sym-name))
                 (with-meta
                   (symbol (p 0) (p 1))
                   (when line
@@ -381,7 +408,10 @@
              _initch (read-char reader))
         token (read-token reader ch)
         [sym-ns sym-name] (parse-symbol token)]
-    (symbol sym-ns sym-name)))
+    (if (peek-matches? \: reader)
+      (do (read-char reader)
+          (keyword sym-ns sym-name))
+      (symbol sym-ns sym-name))))
 
 (defn read-keyword
   [reader _initch _opts _pending-forms]
