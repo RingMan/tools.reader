@@ -9,6 +9,20 @@
   (when ch
     (and (not (eol-ch? ch)) (Character/isWhitespace ^Character ch))))
 
+(defn numeric?
+  "Checks whether a given character is numeric"
+  [^Character ch]
+  (when ch
+    (Character/isDigit ch)))
+
+(defn newline?
+  "Checks whether the character is a newline"
+  [c]
+  (identical? \newline c))
+
+(defn newline-or-nil? [c]
+  (or (nil? c) (newline? c)))
+
 (defn delimiter? [ch]
   (case ch
     \( :open
