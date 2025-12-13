@@ -4,7 +4,7 @@
 (def eol-ch? #{\return \newline})
 
 (defn whitespace?
-  "Checks whether a given character is whitespace"
+  "Checks whether a given character is whitespace, but NOT an EOL character"
   [ch]
   (when ch
     (and (not (eol-ch? ch)) (Character/isWhitespace ^Character ch))))
