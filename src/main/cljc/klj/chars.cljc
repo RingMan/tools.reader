@@ -9,7 +9,7 @@
   (when ch
     (and (not (eol-ch? ch)) (Character/isWhitespace ^Character ch))))
 
-(defn numeric?
+(defn digit?
   "Checks whether a given character is numeric"
   [^Character ch]
   (when ch
