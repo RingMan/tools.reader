@@ -14,7 +14,7 @@
 ;; TODO: Consider not passing in `rdr-fn`.
 ;; Instead, supply it when converting to an s-expr.
 ;; Use the reader on `:text` of any node that doesn't
-;; have a `:syntax` key.
+;; have a `:expr` key.
 
 (defn literal-node
   "Make a generic token. Could be used in a first pass to
@@ -23,21 +23,26 @@
   [src rdr-fn]
   {:type :literal
    :text src
-   :syntax rdr-fn})
+   :expr rdr-fn})
+
+(defn bool-node [src expr]
+  {:type :bool
+   :text src
+   :expr expr})
 
 (defn symbol-node [src s-ns s-name]
   {:type :symbol
    :text src
    :ns s-ns
    :name s-name
-   :syntax (symbol s-ns s-name)})
+   :expr (symbol s-ns s-name)})
 
 (defn keyword-node [src k-ns k-name]
   {:type :keyword
    :text src
    :ns k-ns
    :name k-name
-   :syntax (keyword k-ns k-name)})
+   :expr (keyword k-ns k-name)})
 
 (defn ws->str [ws]
   (cond
@@ -107,7 +112,7 @@
 (defn character-node [t ch]
   {:type :char
    :text t
-   :syntax ch})
+   :expr ch})
 
 (comment
   (character-node "'\n'" \newline))
@@ -115,12 +120,12 @@
 (defn number-node [t n]
   {:type :number
    :text t
-   :syntax n})
+   :expr n})
 
-(defn nil-node []
+(defn nil-node [txt]
   {:type :nil
-   :text "nil"
-   :syntax nil})
+   :text txt
+   :expr nil})
 
 (comment
   (nil-node))
