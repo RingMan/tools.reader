@@ -120,6 +120,24 @@
           (identical? ch mch) (recur :closing level)
           :else (recur :reading level))))))
 
+(defn line-comment-reader
+  ;; Returns a fn suitable as a reader-macro
+  ([]
+   (fn [rdr ch]
+     (let [[txt eol] (read-to-eol rdr)]
+       {:open ch
+        :comment txt
+        :eol eol})))
+  ;; Returns a function suitable as first arg to chained-reader-fn
+  ([ch2]
+   (fn [rdr ch]
+     (if (identical? (peek-char rdr) ch2)
+       (let [[txt eol] (do (read-char rdr) (read-to-eol rdr))]
+         {:open (str ch ch2)
+          :comment txt
+          :eol eol})
+       rdr))))
+
 (defn ?read-cpp-comment [rdr ch]
   (if (identical? ch \/)
     (case (peek-char rdr)
