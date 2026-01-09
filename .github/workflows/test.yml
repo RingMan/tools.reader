@@ -3,7 +3,10 @@ name: Test
 permissions:
   contents: read
 
-on: [push]
+on:
+  push:
+    branches:
+    - master
 
 jobs:
   call-test:
