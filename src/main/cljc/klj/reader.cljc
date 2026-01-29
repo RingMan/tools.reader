@@ -465,9 +465,10 @@
 (defn macros [ch]
   (case ch
     \" read-quoted-name
+    ;; \' read-quoted-name
     \: read-sym-or-keyword #_read-keyword
     \; read-sym-or-comment
-    \' read-sym-or-quote #_(#'tr/wrapping-reader 'quote)
+    #_\‘ \' read-sym-or-quote #_(#'tr/wrapping-reader 'quote)
     \@ read-sym-or-deref #_(#'tr/wrapping-reader 'clojure.core/deref)
     \^ read-sym-or-meta #_#'tr/read-meta
     \` read-sym-or-syntax-quote #_#'tr/read-syntax-quote
@@ -504,8 +505,8 @@
   [rdr _ch opts pending-forms]
   (if-let [ch (read-char rdr)]
     (case ch
-      (\t \T) true  ; TODO: ensure boundary after
-      (\f \F) false ; TODO: ensure boundary after
+      ;; (\t \T) true  ; TODO: ensure boundary after
+      ;; (\f \F) false ; TODO: ensure boundary after
       (if-let [dm (dispatch-macros ch)]
         (dm rdr ch opts pending-forms)
         ;; TODO: write read-bool-or-tagged
