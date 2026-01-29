@@ -56,6 +56,21 @@
    (complement p?)
    (p? nil)))
 
+(defn read-n
+  "Call the given function on the given reader until `n` values matching `p?` have been
+   collected."
+  [#?(:cljs ^not-native reader :default reader) node-tag read-fn p? n]
+  {:pre [(pos? n)]}
+  (loop [c 0
+         vs []]
+    (if (< c n)
+      (if-let [v (read-fn reader)]
+        (recur
+         (if (p? v) (inc c) c)
+         (conj vs v))
+        (err/throw-eof-reading reader node-tag (str " node expects " n " value(s)")))
+      vs)))
+
 (defn read-to-eol
   "Advances the reader to the end of a line.
   Supports CR, LF, or CRLF line endings.
@@ -122,18 +137,22 @@
 
 (defn line-comment-reader
   ;; Returns a fn suitable as a reader-macro
-  ([]
+  ([ch1]
    (fn [rdr ch]
-     (let [[txt eol] (read-to-eol rdr)]
-       {:open ch
-        :comment txt
-        :eol eol})))
+     (if (identical? ch ch1)
+       (let [[txt eol] (read-to-eol rdr)]
+         {:type :comment
+          :open ch
+          :comment txt
+          :eol eol})
+       rdr)))
   ;; Returns a function suitable as first arg to chained-reader-fn
-  ([ch2]
+  ([ch1 ch2]
    (fn [rdr ch]
-     (if (identical? (peek-char rdr) ch2)
+     (if (and (identical? ch ch1) (identical? (peek-char rdr) ch2))
        (let [[txt eol] (do (read-char rdr) (read-to-eol rdr))]
-         {:open (str ch ch2)
+         {:type :comment
+          :open (str ch ch2)
           :comment txt
           :eol eol})
        rdr))))
@@ -231,6 +250,11 @@
       (if (= \R (peek-char reader))
         (read-raw-block reader \( \) \;)
         (read-to-eol reader)))))
+
+;; TODO: consider parameterizing treatment of consecutive quotes
+;; Also, we don't actually want to escape characters. We just
+;; need the string data. Look at `rewrite-clj.parser.impl/read-string-data`
+;; for comparison. We just need to guard against an escaped double quote.
 
 (defn read-delimited-string
   [reader quote-ch]
