@@ -190,7 +190,7 @@
 (def ^:const upper-limit (int \uD7ff))
 (def ^:const lower-limit (int \uE000))
 
-(defn- peek-matches? [ch rdr]
+(defn peek-matches? [ch rdr]
   (= (peek-char rdr) ch))
 
 (defn read-char*
