@@ -10,10 +10,11 @@
             [clojure.tools.reader.reader-types :refer
              [get-column-number get-file-name get-line-number indexing-reader?
               log-source peek-char read-char unread]]
-            [klj.blocks :refer [chained-reader-fn read-delimited-string ?read-comment]]
+            [klj.blocks :refer [chained-reader-fn read-delimited-string read-n read-to-eol ?read-comment]]
             [klj.chars :refer [digit? eol-ch? whitespace?]]
-            [klj.nodes :refer [as-node bool-node eol-node literal-node nil-node number-node root-node whitespace]]
-            [klj.reader :as k])
+            [klj.nodes :refer [as-node bool-node eol-node line-comment-node string-node token-node nil-node number-node punctuator code-node whitespace] :as kn]
+            [klj.reader :as k]
+            [clojure.core :as c])
   (:import (clojure.lang PersistentVector)
            (java.lang Character Exception IllegalStateException Object StringBuilder)))
 
@@ -32,6 +33,8 @@
 (defn token-terminating? [ch]
   (or (Character/isWhitespace ^Character ch) (needs-escape? ch)))
 
+;; TODO: Same situation as string data.
+;; Probably don't want to actually do the escapes.
 (defn read-token
   ^String [reader initch]
   (loop [sb (StringBuilder.) ch initch first? true]
@@ -56,8 +59,14 @@
         (do (.append buf c) (recur (read-char rdr)))
         (do (unread rdr c) (whitespace (str buf)))))))
 
+(defn ?parse-space [rdr ch]
+  (if (whitespace? ch)
+    (parse-space rdr ch)
+    rdr))
+
 (defn parse-separator [_rdr ch]
-  (as-node ch))
+  (punctuator ch)
+  #_(as-node ch))
 
 (defn parse-delimiter [_rdr ch]
   (as-node ch))
@@ -71,12 +80,70 @@
                 (recur (read-char rdr) (conj eols "\r") nil))
       (do (unread rdr c) (eol-node eols)))))
 
+(defn parse-comment
+  ([rdr ch]
+   (parse-comment rdr ch nil))
+  ([_rdr ch ch2]
+   (line-comment-node (str ch ch2) (read-to-eol _rdr))))
+
+(defn parse-backslash
+  [rdr backslash]
+  (when (nil? (peek-char rdr))
+    (err/throw-eof-error rdr nil))
+  (let [[ch ch2] (if (#{\\ \" \( \) \{ \} \[ \]}
+                       (peek-char rdr))
+                   [nil backslash] [backslash (read-char rdr)])
+        token (read-token rdr ch2)
+        token-len (count token)
+        text (str ch token)
+        #_#_[sym-ns sym-name] (parse-symbol token)]
+    #_(symbol sym-ns sym-name)
+    (cond
+      (== 1 token-len) (kn/character-node text (k/read-string text))
+      (contains? #{"newline" "space" "tab" "backspace" "formfeed" "return"} token)
+        (kn/character-node text (k/read-string text))
+      (.startsWith token "u") (kn/character-node text (k/read-string text))
+      (.startsWith token "o") (kn/character-node text (k/read-string text))
+      :else (let [[sym-ns sym-name] (k/parse-symbol token)]
+              (if (k/peek-matches? \: rdr)
+                (kn/keyword-node (str text (read-char rdr)) sym-ns sym-name)
+                (kn/symbol-node text sym-ns sym-name))))))
+
 (defn parse-string [rdr ch]
-  (as-node (read-delimited-string rdr ch)))
+  (string-node ch ch (read-delimited-string rdr ch)))
+
+(defn parse-keyword [rdr ch]
+  (let [tok (read-token rdr ch)
+        [k-ns k-name] (k/parse-symbol (subs tok 1))]
+    (kn/keyword-node tok k-ns k-name)))
 
 (defn parse-symbol [rdr ch]
   (let [tok (read-token rdr ch)]
-    (literal-node tok identity)))
+    (token-node tok tok)))
+
+(defn parse-escaped-symbol
+  [rdr ch ch2]
+  ;; (println "dmk read-escaped-symbol" ch)
+  (when (nil? (peek-char rdr))
+    (err/throw-eof-error rdr nil))
+  (let [[ch2 ch3] (if (#{\b \f \n \o \r \s \t \u
+                         \\ \" \( \) \{ \} \[ \]}
+                        (peek-char rdr))
+                    [nil ch2]
+                    [ch2 (read-char rdr)])
+        token (read-token rdr ch3)
+        [sym-ns sym-name] (k/parse-symbol token)
+        text (str ch ch2 token)]
+    (if (k/peek-matches? \: rdr)
+      (kn/keyword-node (str text (read-char rdr)) sym-ns sym-name)
+      (kn/symbol-node text sym-ns sym-name))))
+
+(defn parse-symbolic [rdr ch ch2]
+  (let [tok (read-token rdr ch)]
+    (kn/symbolic-node (str ch ch2) (subs tok 1))))
+
+(def parse-whitespace-or-symbol
+  (chained-reader-fn ?parse-space parse-symbol))
 
 (defn parse-number [rdr ch]
   (let [txt (read-token rdr ch)]
@@ -99,13 +166,16 @@
 (def parse-number-or-symbol
   (chained-reader-fn ?parse-number parse-symbol))
 
+(def parse-whitespace-number-or-symbol
+  (chained-reader-fn ?parse-space parse-number-or-symbol))
+
 (defn parse-bool-nil-or-sym [rdr ch]
   (let [txt (read-token rdr ch)]
     (case txt
       "true" (bool-node txt true)
       "false" (bool-node txt false)
       ("nil" "null") (nil-node txt)
-      (literal-node txt identity))))
+      (token-node txt txt))))
 
 (def parse-number-or-bool-nil-or-sym
   (chained-reader-fn ?parse-number parse-bool-nil-or-sym))
@@ -139,6 +209,77 @@
      (klj.nodes/delimiter close :close)
      (read-delimited-coll :seq close rdr))))
 
+(defn parse-set [rdr _ch ch2]
+  (let [close (klj.chars/matching-bracket ch2)]
+    (klj.nodes/set-node
+     (read-delimited-coll :set close rdr))))
+
+(declare parse-sexprs)
+
+(defn parse-deref [rdr _ch]
+  (kn/parent-node :deref (parse-sexprs rdr :deref 1)))
+
+(defn parse-eval [rdr _ch _ch2]
+  (kn/eval-node (parse-sexprs rdr :eval 1)))
+
+(defn parse-fn [rdr _ch ch2]
+  (unread rdr ch2)
+  (kn/fn-node (parse-sexprs rdr :fn 1)))
+
+(defn parse-meta
+  ([rdr ch]
+   (parse-meta rdr ch nil))
+  ([rdr ch ch2]
+   (kn/meta-node (str ch ch2) (parse-sexprs rdr :meta 2))))
+
+(defn parse-quote [rdr _ch]
+  (kn/quote-node (parse-sexprs rdr :quote 1)))
+
+(defn parse-syntax-quote [rdr _ch]
+  (kn/syntax-quote-node (parse-sexprs rdr :syntax-quote 1)))
+
+(defn parse-unquote [rdr _ch]
+  (let [ch (peek-char rdr)]
+    (if (= ch \@)
+      (kn/unquote-splicing-node (parse-sexprs rdr :unquote-splicing 1 true))
+      (kn/unquote-node (parse-sexprs rdr :unquote 1)))))
+
+(defn parse-var [rdr _ch _ch2]
+  (kn/var-node (parse-sexprs rdr :syntax-quote 1)))
+
+(defn parse-regex [rdr ch ch2]
+  (kn/regex-node (str ch ch2) ch2 (read-delimited-string rdr ch2)))
+
+(defn parse-discard [rdr _ch _ch2]
+  (kn/discard-node (parse-sexprs rdr :uneval 1)))
+
+(defn parse-rdr-cond [rdr ch ch2]
+  (let [ch3 (peek-char rdr)]
+    (if (= ch3 \@)
+      (kn/conditional-splicing-node (parse-sexprs rdr :conditional-splicing 1 true))
+      (kn/conditional-node (parse-sexprs rdr :conditional 1)))))
+
+(defn parse-ns-map [rdr ch ch2]
+  (let [ch3 (peek-char rdr)
+        ;; tok (read-token rdr ch2)
+        ;; _ (println {:tok tok})
+        #_#_prefix (if (= tok "::")
+                     (kn/leaf-node :auto-resolve tok)
+                     (let [[k-ns k-name] (k/parse-symbol (subs tok 1))]
+                       (kn/keyword-node tok k-ns k-name)))]
+    (if (= ch3 \:)
+      (do (read-char rdr) ;; skip \:
+          (kn/ns-map-node (cons (kn/leaf-node :auto-resolve "::")
+                                (parse-sexprs rdr :map 1))))
+      (let [tok (read-token rdr ch2)
+            _ (println {:tok tok})
+            [k-ns k-name] (k/parse-symbol (subs tok 1))]
+        (kn/ns-map-node (cons (kn/keyword-node tok k-ns k-name)
+                              (parse-sexprs rdr :map 1)))))))
+
+(defn parse-tag [rdr ch]
+  (kn/tag-node (parse-sexprs rdr :tag 2)))
+
 (defn parse-unmatched-delimiter [rdr ch]
   (err/throw-unmatch-delimiter rdr ch))
 
@@ -166,7 +307,66 @@
 
 (defskip number)
 
+(defn parse-sym-or [macro-fn]
+  (fn [rdr ch]
+    (if (terminating? (peek-char rdr))
+      (as-node (symbol (str ch)))
+      (macro-fn rdr ch))))
+
+(def parse-sym-or-comment (parse-sym-or parse-comment))
+(def parse-sym-or-deref
+  (parse-sym-or parse-deref))
+(def parse-sym-or-keyword (parse-sym-or parse-keyword))
+(def parse-sym-or-meta (parse-sym-or parse-meta))
+(def parse-sym-or-quote
+  (parse-sym-or parse-quote))
+(def parse-sym-or-syntax-quote (parse-sym-or parse-syntax-quote))
+(def parse-sym-or-unquote (parse-sym-or parse-unquote))
+;; (def parse-sym-or-char (parse-sym-or read-char*))
+(declare parse-dispatch)
+(def parse-sym-or-dispatch (parse-sym-or parse-dispatch))
+
 ;;; Default reader macros
+
+(def dispatch-ch \#)
+
+(defn- parse-sexprs
+  [#?(:cljs ^not-native reader :default reader) node-tag n & [ignore?]]
+  (when ignore?
+    (read-char reader))
+  (read-n
+   reader
+   node-tag
+   parse
+   #(case (::kn/type %)
+      (:comment :line-comment :delimiter :eol :space :punctuator) false
+      true)
+   n))
+
+(def default-dispatch-macros
+  {\! #'parse-comment
+   \^ #'parse-meta
+   \' #'parse-var
+   \= #'parse-eval
+   \" #'parse-regex
+   \{ #'parse-set
+   \# #'parse-symbolic
+   \( #'parse-fn
+   \_ #'parse-discard
+   \? #'parse-rdr-cond
+   \: #'parse-ns-map
+   \\ #'parse-escaped-symbol
+   :else #'parse-tag})
+
+(defn parse-dispatch [rdr ch]
+  (let [ch2 (read-char rdr)
+        f (default-dispatch-macros ch2)]
+    (cond
+      (nil? ch2) (throw (ex-info "Expected dispatch macro char or tag, got EOF" {}))
+      (nil? f) (do (unread rdr ch2)
+                   ((:else default-dispatch-macros) rdr ch))
+      #_(throw (ex-info "No such dispatch macro" {:ch ch :ch2 ch2}))
+      :else (f rdr ch ch2))))
 
 ;; TODO: Make sure map is right data structure here.
 ;; Prior macro dispatch uses `case` expression which
@@ -177,21 +377,27 @@
    \tab #'parse-space
    \return #'parse-eol
    \newline #'parse-eol
+   \\ #'parse-backslash
    \" #'parse-string
-   \' #'parse-string
+   ;; \' #'parse-string
    ;; \- parse-num-or-sym
    ;; \+ parse-num-or-sym
    \, #'parse-separator
-   \; #'parse-separator
-   \: #'parse-separator
+   \; #'parse-sym-or-comment
+   \: #'parse-sym-or-keyword
    \( #_'parse-delimiter #'parse-collection
    \[ #_parse-delimiter #'parse-collection
    \{ #_parse-delimiter #'parse-collection
    \) #_parse-delimiter #'parse-unmatched-delimiter
    \] #_parse-delimiter #'parse-unmatched-delimiter
    \} #_parse-delimiter #'parse-unmatched-delimiter
-   ;;TODO: parse-symbol-or-unicode-whitespace
-   :else #'parse-number-or-bool-nil-or-sym #_parse-bool-nil-or-sym #_parse-symbol})
+   \^ #'parse-sym-or-meta
+   \@ #'parse-sym-or-deref
+   \' #'parse-sym-or-quote
+   \` #'parse-sym-or-syntax-quote
+   \~ #'parse-sym-or-unquote
+   \# #'parse-sym-or-dispatch
+   :else #'parse-whitespace-number-or-symbol #_parse-bool-nil-or-sym #_parse-symbol})
 
 (defn parse-leading [rdr]
   (let [ch (read-char rdr)
@@ -204,7 +410,7 @@
 (def ^:dynamic *parse-leading* parse-leading #_skip-comments)
 
 (defn parse
-  ([reader] (parse reader nil :EOF {}))
+  ([reader] (parse reader nil nil {}))
   ([reader eof-error? sentinel]
    (parse reader eof-error? sentinel nil {}))
   ([reader eof-error? sentinel opts]
@@ -214,17 +420,11 @@
      (loop []
        (let [ret (log-source
                   reader
-                  ;; *parse-leading* can skip things like
-                  ;; comments and whitespace or return a token.
-                  ;; If returns char, threat it as first char of next token
-                  ;; else return result of *parse-leading*
                   (let [ch (*parse-leading* reader) #_(read-char reader)]
-                    (println "parse-lead = " ch)
                     (cond
                       (nil? ch) (if eof-error? (err/throw-eof-error reader nil) sentinel)
                       (= ch return-on) tr/READ_FINISHED
                       (not (char? ch)) ch
-                      ;; (rc/number-literal? reader ch) (parse-number reader ch)
                       :else (if-let [f (*macros* ch)]
                               (f reader ch)
                               ((:else *macros*) reader ch)))))]
@@ -258,5 +458,5 @@
           (cond
             (identical? EOF r) ret
             :else (recur (conj ret r) (parse rdr false EOF))))]
-    (root-node :klj children)))
+    (code-node :klj children)))
 
