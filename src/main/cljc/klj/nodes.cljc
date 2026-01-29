@@ -1,8 +1,15 @@
 (ns klj.nodes
-  (:require [klj.protocols :refer [*none*] :as proto]
+  (:require [klj.protocols :as proto]
             [klj.reader :as klj]
             #_[textasy.lines :refer [lines]])
   #?(:cljs (:import goog.string.StringBuffer)))
+
+(defonce NONE (Object.))
+
+(def ^:dynamic *none* NONE)
+
+(defn none? [x]
+  (identical? *none* x))
 
 (defprotocol CoerceNode
   "Protocol to coerce values to syntax nodes."
