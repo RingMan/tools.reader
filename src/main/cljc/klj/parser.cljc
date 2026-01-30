@@ -33,8 +33,6 @@
 (defn token-terminating? [ch]
   (or (Character/isWhitespace ^Character ch) (needs-escape? ch)))
 
-;; TODO: Same situation as string data.
-;; Probably don't want to actually do the escapes.
 (defn read-token
   ^String [reader initch]
   (loop [sb (StringBuilder.) ch initch first? true]
@@ -42,15 +40,17 @@
       (nil? ch) (str sb)
       (token-terminating? ch) (do (unread reader ch)
                                   (str sb))
-      (identical? \\ ch) (recur (doto sb (.append (#'tr/escape-char reader)))
-                                (read-char reader)
-                                false)
+      (identical? \\ ch) (let [ch2 (read-char reader)]
+                           (.append sb ch)
+                           (if (nil? ch2)
+                             (err/throw-eof-reading reader :token sb)
+                             (recur (.append sb ch2) (read-char reader) false)))
       (or first? (not (#{\: \; \,} ch)))
-      (recur (doto sb (.append ch)) (read-char reader) false)
+      (recur (.append sb ch) (read-char reader) false)
       (terminating? (peek-char reader)) (do (unread reader ch) (str sb))
       (opening-delim? (peek-char reader))
       (throw (IllegalStateException. "Expected EOF, white space or closing delimiter after punctuation at end of token."))
-      :else (recur (doto sb (.append ch)) (read-char reader) false))))
+      :else (recur (.append sb ch) (read-char reader) false))))
 
 (defn parse-space [rdr ch]
   (let [buf (StringBuffer.)]
@@ -94,17 +94,17 @@
                        (peek-char rdr))
                    [nil backslash] [backslash (read-char rdr)])
         token (read-token rdr ch2)
-        token-len (count token)
         text (str ch token)
-        #_#_[sym-ns sym-name] (parse-symbol token)]
-    #_(symbol sym-ns sym-name)
+        text-len (count text)]
     (cond
-      (== 1 token-len) (kn/character-node text (k/read-string text))
+      (== 2 text-len) (kn/character-node text (k/read-string text))
       (contains? #{"newline" "space" "tab" "backspace" "formfeed" "return"} token)
         (kn/character-node text (k/read-string text))
       (.startsWith token "u") (kn/character-node text (k/read-string text))
       (.startsWith token "o") (kn/character-node text (k/read-string text))
-      :else (let [[sym-ns sym-name] (k/parse-symbol token)]
+      :else (let [sym (k/read-string text)
+                  sym-ns (namespace sym)
+                  sym-name (name sym)]
               (if (k/peek-matches? \: rdr)
                 (kn/keyword-node (str text (read-char rdr)) sym-ns sym-name)
                 (kn/symbol-node text sym-ns sym-name))))))
@@ -114,7 +114,9 @@
 
 (defn parse-keyword [rdr ch]
   (let [tok (read-token rdr ch)
-        [k-ns k-name] (k/parse-symbol (subs tok 1))]
+        kwd (k/read-string tok)
+        k-ns (namespace kwd)
+        k-name (name kwd)]
     (kn/keyword-node tok k-ns k-name)))
 
 (defn parse-symbol [rdr ch]
@@ -146,8 +148,12 @@
   (chained-reader-fn ?parse-space parse-symbol))
 
 (defn parse-number [rdr ch]
-  (let [txt (read-token rdr ch)]
-    (number-node txt (edn/read-string txt))))
+  (let [txt (read-token rdr ch)
+        n (edn/read-string txt)
+        txt' (pr-str n)]
+    (if (= txt txt')
+      (number-node txt n)
+      (throw (ex-info (str "Invalid numeric literal: " txt) {})))))
 
 (defn ?parse-signed-number [rdr ch]
   (case ch
