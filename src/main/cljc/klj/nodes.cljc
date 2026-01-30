@@ -374,6 +374,8 @@
         (run! #(code* % sb) (:children ast)))
     :string
     (.. sb (append (:open ast)) (append (:text ast)) (append (:close ast)))
+    :symbolic
+    (.. sb (append (:open ast)) (append (:text ast)))
     (:bool :char :delimiter :eol :keyword :macro_keyword :nil :number :punctuator :space :symbol :token)
     (. sb (append (:text ast)))
     #_else (. sb (append (str ast)))))
@@ -408,6 +410,7 @@
     ;; probably need to filter these as you go
     (:comment :delimiter :eol :space :punctuator :uneval) *none*
     (:bool :char :keyword :nil :number :symbol) (:expr n)
+    :symbolic (klj/read-string (str (:open n) (:text n)))
     :vector (vec (exprs (:children n)))
     :list (apply list (exprs (:children n)))
     :set (set (exprs (:children n)))
