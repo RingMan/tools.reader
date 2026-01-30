@@ -56,6 +56,9 @@
 (defn terminating? [ch]
   (or (nil? ch) (Character/isWhitespace ^Character ch) (closing-delim? ch)))
 
+(defn nil-or-ws? [ch]
+  (or (nil? ch) (Character/isWhitespace ^Character ch)))
+
 (defn needs-escape? [ch]
   (case ch
     (\" \( \) \[ \] \{ \}) true
@@ -459,7 +462,12 @@
   (read-sym-or (#'tr/wrapping-reader 'quote)))
 (def read-sym-or-syntax-quote (read-sym-or #'tr/read-syntax-quote))
 (def read-sym-or-unquote (read-sym-or #'tr/read-unquote))
-(def read-sym-or-char (read-sym-or read-char*))
+
+(defn read-sym-or-char [rdr ch opt pending-forms]
+  (if (nil-or-ws? (peek-char rdr))
+    (symbol (str ch))
+    (read-char* rdr ch opt pending-forms)))
+
 (def read-sym-or-dispatch (read-sym-or #'read-dispatch))
 
 (defn macros [ch]
