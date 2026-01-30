@@ -262,12 +262,15 @@
          ch (read-char reader)]
     (cond
       (nil? ch) (err/throw-eof-reading reader :string sb)
-      (= \\ ch) (recur (doto sb (.append (#'tr/escape-char reader)))
-                       (read-char reader))
+      (= \\ ch) (let [ch2 (read-char reader)]
+                  (.append sb ch)
+                  (if (nil? ch2)
+                    (err/throw-eof-reading reader :string sb)
+                    (recur (.append sb ch2) (read-char reader))))
       (= quote-ch ch) (if (= (peek-char reader) quote-ch)
                         (do
                           (read-char reader) ;skip quote-ch
-                          (recur (doto sb (.append ch)) (read-char reader)))
+                          (recur (.append sb ch) (read-char reader)))
                         (str sb))
-      :else (recur (doto sb (.append ch)) (read-char reader)))))
+      :else (recur (.append sb ch) (read-char reader)))))
 
