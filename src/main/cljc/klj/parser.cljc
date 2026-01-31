@@ -46,10 +46,10 @@
                              (err/throw-eof-reading reader :token sb)
                              (recur (.append sb ch2) (read-char reader) false)))
       (or first? (not (#{\: \; \,} ch)))
-      (recur (.append sb ch) (read-char reader) false)
+        (recur (.append sb ch) (read-char reader) false)
       (terminating? (peek-char reader)) (do (unread reader ch) (str sb))
       (opening-delim? (peek-char reader))
-      (throw (IllegalStateException. "Expected EOF, white space or closing delimiter after punctuation at end of token."))
+        (throw (IllegalStateException. "Expected EOF, white space or closing delimiter after punctuation at end of token."))
       :else (recur (.append sb ch) (read-char reader) false))))
 
 (defn parse-space [rdr ch]
@@ -65,8 +65,7 @@
     rdr))
 
 (defn parse-separator [_rdr ch]
-  (punctuator ch)
-  #_(as-node ch))
+  (punctuator ch))
 
 (defn parse-delimiter [_rdr ch]
   (as-node ch))
@@ -104,26 +103,37 @@
         (kn/character-node text (k/read-string text))
       (.startsWith token "u") (kn/character-node text (k/read-string text))
       (.startsWith token "o") (kn/character-node text (k/read-string text))
-      :else (let [sym (k/read-string text)
+      :else (let [;; add comma to ensure trailing \, \; or \: in token are read
+                  sym (k/read-string (str text \,))
                   sym-ns (namespace sym)
                   sym-name (name sym)]
               (if (k/peek-matches? \: rdr)
                 (kn/keyword-node (str text (read-char rdr)) sym-ns sym-name)
                 (kn/symbol-node text sym-ns sym-name))))))
 
+(defn parse-sym-or-backslash [rdr ch]
+  (if (k/nil-or-ws? (peek-char rdr))
+    (as-node (symbol (str ch)))
+    (parse-backslash rdr ch)))
+
 (defn parse-string [rdr ch]
   (string-node ch ch (read-delimited-string rdr ch)))
 
 (defn parse-keyword [rdr ch]
   (let [tok (read-token rdr ch)
-        kwd (k/read-string tok)
+        ;; add comma to ensure trailing \, \; or \: in token are read
+        kwd (k/read-string (str tok \,))
         k-ns (namespace kwd)
         k-name (name kwd)]
     (kn/keyword-node tok k-ns k-name)))
 
 (defn parse-symbol [rdr ch]
-  (let [tok (read-token rdr ch)]
-    (token-node tok tok)))
+  (let [tok (read-token rdr ch)
+        ;; add comma to ensure trailing \, \; or \: in token are read
+        sym (k/read-string (str tok \,))
+        s-ns (namespace sym)
+        s-name (name sym)]
+    (kn/symbol-node tok s-ns s-name)))
 
 (defn parse-escaped-symbol
   [rdr ch ch2]
@@ -160,7 +170,6 @@
 (defn ?parse-signed-number [rdr ch]
   (case ch
     (\+ \-) (if (digit? (peek-char rdr)) (parse-number rdr ch) rdr)
-    ;; \. (if num? :dec-num rdr)
     rdr))
 
 (defn ?parse-number [rdr ch]
@@ -168,7 +177,6 @@
     (parse-number rdr ch)
     (case ch
       (\+ \-) (if (digit? (peek-char rdr)) (parse-number rdr ch) rdr)
-      ;; \. (if num? :dec-num rdr)
       rdr)))
 
 (def parse-number-or-symbol
@@ -197,8 +205,6 @@
   ^PersistentVector [kind delim rdr]
   (let [[start-line start-column] (#'tr/starting-line-col-info rdr)
         delim (char delim)]
-    ;; (char 120)
-    ;; (clojure.repl/doc char)
     (loop [a (transient []), ch (peek-char rdr)]
       (if (identical? delim ch) #_(= delim ch)
           (do
@@ -268,13 +274,7 @@
       (kn/conditional-node (parse-sexprs rdr :conditional 1)))))
 
 (defn parse-ns-map [rdr ch ch2]
-  (let [ch3 (peek-char rdr)
-        ;; tok (read-token rdr ch2)
-        ;; _ (println {:tok tok})
-        #_#_prefix (if (= tok "::")
-                     (kn/leaf-node :auto-resolve tok)
-                     (let [[k-ns k-name] (k/parse-symbol (subs tok 1))]
-                       (kn/keyword-node tok k-ns k-name)))]
+  (let [ch3 (peek-char rdr)]
     (if (= ch3 \:)
       (do (read-char rdr) ;; skip \:
           (kn/ns-map-node (cons (kn/leaf-node :auto-resolve "::")
@@ -385,7 +385,7 @@
    \tab #'parse-space
    \return #'parse-eol
    \newline #'parse-eol
-   \\ #'parse-backslash
+   \\ #'parse-sym-or-backslash
    \" #'parse-string
    ;; \' #'parse-string
    ;; \- parse-num-or-sym
