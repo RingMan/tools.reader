@@ -62,6 +62,24 @@
              (is (number? (n/expr n)))
              (is (= (n/code n) in)))))
 
+(defspec t-kwd-with-trailing-sep
+  (for-all [[in sep] (gen/tuple g/keyword (gen/elements [\, \; \:]))]
+           (let [rdr (r/string-reader (str in sep))
+                 n (p/parse rdr)]
+             (is (= (::n/type n) :keyword))
+             (is (= (:text n) in))
+             (is (= (n/code n) in)))))
+
+(defspec t-sym-with-trailing-sep
+  (for-all [[in sep] (gen/tuple g/symbol (gen/elements [\, \; \:]))]
+           (let [rdr (r/string-reader (str in sep))
+                 n (p/parse rdr)]
+             (is (= (::n/type n) :symbol))
+             (is (= (:text n) in))
+             (is (= (n/code n) in)))))
+
+(comment (t-sym-with-trailing-sep))
+
 (defspec t-block-comments
   (for-all [bc g/block-comment]
            (let [in (g/block-comment-str bc)
