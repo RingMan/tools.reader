@@ -7,7 +7,8 @@
         [clojure.tools.reader.impl.errors :as err]
         [clojure.tools.reader.reader-types :refer
          [peek-char read-char unread]]
-        [klj.chars :refer [newline-or-nil?]]]
+        [klj.chars :refer [newline-or-nil?]]
+        [klj.nodes :as kn]]
        :cljs
        [[cljs.tools.reader :as tr]
         [cljs.tools.reader.impl.errors :as err]
@@ -174,20 +175,16 @@
   [reader ch]
   (case ch
     \# (case (peek-char reader)
-         \space {:open "# "
-                 :comment (do (read-char reader)
-                              (read-to-eol reader))
-                 :eol \newline}
-         \| {:open "#|" :close "|#" :comment (do (read-char reader)
-                                                 (read-to-suffix reader "|#"))}
+         \space (kn/line-comment-node "# " (do (read-char reader)
+                                               (read-to-eol reader)))
+         \| (kn/block-comment-node "#|" "|#" (do (read-char reader)
+                                                 (read-to-suffix reader "|#")))
          reader)
     \/ (case (peek-char reader)
-         \/ {:open "//"
-             :comment (do (read-char reader)
-                          (read-to-eol reader))
-             :eol \newline}
-         \* {:open "/*" :close "*/" :comment (do (read-char reader)
-                                                 (read-to-suffix reader "*/"))}
+         \/ (kn/line-comment-node "//" (do (read-char reader)
+                                           (read-to-eol reader)))
+         \* (kn/block-comment-node "/*" "*/" (do (read-char reader)
+                                                 (read-to-suffix reader "*/")))
          reader)
     \; (let [ch2 (peek-char reader)
              ;TODO: look up matching char
@@ -204,10 +201,10 @@
                       \# "#;"
                       nil)]
          (if suffix
-           {:open (str ch ch2)
-            :close suffix
-            :comment (do (read-char reader)
-                         (read-to-suffix reader suffix))}
+           (kn/block-comment-node
+             (str ch ch2) suffix
+             (do (read-char reader)
+                 (read-to-suffix reader suffix)))
            reader))
     reader))
 

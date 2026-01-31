@@ -84,7 +84,9 @@
   ([rdr ch]
    (parse-comment rdr ch nil))
   ([_rdr ch ch2]
-   (line-comment-node (str ch ch2) (read-to-eol _rdr))))
+   (let [[body eol] (read-to-eol _rdr)
+         eol (or eol "")]
+     (line-comment-node (str ch ch2) eol body))))
 
 (defn parse-backslash
   [rdr backslash]

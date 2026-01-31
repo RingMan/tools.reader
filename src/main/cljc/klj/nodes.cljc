@@ -133,13 +133,23 @@
 (def CR (eol-node \return))
 
 (defn line-comment-node
-  ([open [text eol]]
-   (line-comment-node open text (eol-node eol)))
-  ([open s eol-n]
+  "`close` should be a character, string, or nil"
+  ([body]
+   (line-comment-node ";;" \newline body))
+  ([open [body eol]]
+   (line-comment-node open eol body))
+  ([open close body]
    {::type :line-comment
     :open open
-    :text s
-    :eol eol-n}))
+    :body body
+    :close close}))
+
+(defn block-comment-node
+  [open close body]
+  {::type :block-comment
+   :open open
+   :body body
+   :close close})
 
 (defn regex-node
   ([s] (regex-node "#\"" \" s))
@@ -342,10 +352,9 @@
     :code
     (run! #(code* % sb) (:children ast))
     :block-comment
-    (.. sb (append (:open ast)) (append (:text ast)) (append (:close ast)))
+    (.. sb (append (:open ast)) (append (:body ast)) (append (:close ast)))
     :line-comment
-    (do (.. sb (append (:open ast)) (append (:text ast)))
-        (code* (:eol ast) sb))
+    (.. sb (append (:open ast)) (append (:body ast)) (append (:close ast)))
     :sequence
     (do (code* (:open ast) sb)
         (run! #(code* % sb) (:children ast))
