@@ -1,6 +1,5 @@
 (ns klj.nodes
-  (:require [klj.protocols :as proto]
-            [klj.reader :as klj]
+  (:require [klj.reader :as klj]
             #_[textasy.lines :refer [lines]])
   #?(:cljs (:import goog.string.StringBuffer)))
 
@@ -39,7 +38,7 @@
 ;; have a `:expr` key.
 ;;
 ;; Things that have a known expression just use the `expr` key.
-;; Things that have _no_ expression value, set it to `klj.protocols/*none*`
+;; Things that have _no_ expression value, set it to `*none*`
 ;; Everything else is processed by *expr-reader*, perhaps `edn/read-string`
 ;; or `klj.reader/read-string`
 
