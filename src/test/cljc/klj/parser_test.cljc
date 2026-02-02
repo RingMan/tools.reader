@@ -21,12 +21,12 @@
 
 (def simple-vals*
   {:number [g/number :number number?]
-   :boolean [g/bool :token boolean?]
-   :nil [g/nil-g :token nil?]
+   :boolean [g/bool :bool boolean?]
+   :nil [g/nil-g :nil nil?]
    :character [g/char :char char?]
    :string [g/string-ascii :string string?]
    :keyword [g/keyword :keyword keyword?]
-   :symbol [g/symbol :token symbol?]
+   :symbol [g/symbol :symbol symbol?]
    :symbolic [g/symbolic-val :symbolic number?]})
 
 (def simple-val-type

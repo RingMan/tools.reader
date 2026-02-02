@@ -130,10 +130,13 @@
 (defn parse-symbol [rdr ch]
   (let [tok (read-token rdr ch)
         ;; add comma to ensure trailing \, \; or \: in token are read
-        sym (k/read-string (str tok \,))
-        s-ns (namespace sym)
-        s-name (name sym)]
-    (kn/symbol-node tok s-ns s-name)))
+        sym (k/read-string (str tok \,))]
+    (cond
+      (nil? sym) (kn/nil-node tok)
+      (boolean? sym) (kn/bool-node tok sym)
+      :else (let [s-ns (namespace sym)
+                  s-name (name sym)]
+              (kn/symbol-node tok s-ns s-name)))))
 
 (defn parse-escaped-symbol
   [rdr ch ch2]
