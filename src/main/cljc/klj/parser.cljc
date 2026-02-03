@@ -10,7 +10,7 @@
             [clojure.tools.reader.reader-types :refer
              [get-column-number get-file-name get-line-number indexing-reader?
               log-source peek-char read-char unread]]
-            [klj.blocks :refer [chained-reader-fn read-delimited-string read-n read-to-eol ?read-comment]]
+            [klj.blocks :refer [chained-reader-fn read-delimited-string read-n read-to-eol ?read-comment] :as kb]
             [klj.chars :refer [digit? eol-ch? whitespace?]]
             [klj.nodes :refer [as-node bool-node eol-node line-comment-node string-node token-node nil-node number-node punctuator code-node whitespace] :as kn]
             [klj.reader :as k]
@@ -118,6 +118,15 @@
 
 (defn parse-string [rdr ch]
   (string-node ch ch (read-delimited-string rdr ch)))
+
+(defn parse-quoted-name
+  [reader initch]
+  (println "dmk read-quoted-name")
+  (let [s (kb/read-quoted-name reader initch)
+        ch (read-char reader)]
+    (case ch
+      (\: \k \~ \s \c) (kn/string-node initch initch ch s)
+      (do (unread reader ch) (kn/string-node initch initch s)))))
 
 (defn parse-keyword [rdr ch]
   (let [tok (read-token rdr ch)
@@ -389,7 +398,7 @@
    \return #'parse-eol
    \newline #'parse-eol
    \\ #'parse-sym-or-backslash
-   \" #'parse-string
+   \" #'parse-quoted-name
    ;; \' #'parse-string
    ;; \- parse-num-or-sym
    ;; \+ parse-num-or-sym

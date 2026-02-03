@@ -271,3 +271,16 @@
                         (str sb))
       :else (recur (.append sb ch) (read-char reader)))))
 
+(defn read-quoted-name
+  [reader initch]
+  (if (not= \\ (peek-char reader))
+    (read-delimited-string reader initch)
+    (do
+      (read-char reader) ;; skip \\
+      (if (= \R (peek-char reader))
+        (let [[_delim s] (read-raw-block reader \( \) initch)]
+          s)
+        (do
+          (unread reader \\)
+          (read-delimited-string reader initch))))))
+

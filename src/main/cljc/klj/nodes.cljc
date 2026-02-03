@@ -164,10 +164,12 @@
 
 (defn string-node
   ([s] (string-node \" \" s))
-  ([open close s]
+  ([open close s] (string-node open close nil s))
+  ([open close suffix s]
    {::type :string
     :open open
     :close close
+    :suffix suffix
     :text s}))
 
 (comment
@@ -412,7 +414,7 @@
               (list* 'do es)
               (first es)))
     ;; TODO: think about handling raw string data, vs regular strings.
-    :string (klj/read-string (str (:open n) (:text n) (:close n)))
+    :string (klj/read-string (str (:open n) (:text n) (:close n) (:suffix n)))
     :token (let [expr* (:expr n)]
              (if (var? expr*) (expr* (:text n)) expr*))
     ;; probably need to filter these as you go
