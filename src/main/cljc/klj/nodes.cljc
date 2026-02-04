@@ -358,7 +358,7 @@
     :block-comment
     (.. sb (append (:open ast)) (append (:body ast)) (append (:close ast)))
     :line-comment
-    (.. sb (append (:open ast)) (append (:body ast)) (append (:close ast)))
+    (.. sb (append (:open ast)) (append (:body ast)) (append (or (:close ast) "")))
     :sequence
     (do (code* (:open ast) sb)
         (run! #(code* % sb) (:children ast))
@@ -456,7 +456,7 @@
               (list* 'do es)
               (first es)))
     ;; TODO: think about handling raw string data, vs regular strings.
-    :string (klj/read-string (str (:open n) (:text n) (:close n) (:suffix n)))
+    :string (klj/read-string (str (:open n) (:body n) (:close n) (:suffix n)))
     :token (let [expr* (:expr n)]
              (if (var? expr*) (expr* (:text n)) expr*))
     ;; probably need to filter these as you go
