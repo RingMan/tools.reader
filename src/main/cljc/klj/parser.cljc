@@ -121,7 +121,6 @@
 
 (defn parse-quoted-name
   [reader initch]
-  (println "dmk read-quoted-name")
   (let [s (kb/read-quoted-name reader initch)
         ch (read-char reader)]
     (case ch
@@ -289,7 +288,7 @@
   (let [ch3 (peek-char rdr)]
     (if (= ch3 \:)
       (do (read-char rdr) ;; skip \:
-          (kn/ns-map-node (cons (kn/leaf-node :auto-resolve "::")
+          (kn/ns-map-node (cons (kn/auto-resolve-node)
                                 (parse-sexprs rdr :map 1))))
       (let [tok (read-token rdr ch2)
             _ (println {:tok tok})

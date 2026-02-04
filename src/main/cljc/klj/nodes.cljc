@@ -156,7 +156,7 @@
    {::type :regex
     :open open
     :close close
-    :text s}))
+    :body s}))
 
 (comment
   (regex-node "[a-z]+")
@@ -170,7 +170,7 @@
     :open open
     :close close
     :suffix suffix
-    :text s}))
+    :body s}))
 
 (comment
   (string-node \' \' "She said, \"Hi!\""))
@@ -261,6 +261,9 @@
 
 (defn conditional-splicing-node [children]
   (parent-node :conditional-splicing children))
+
+(defn auto-resolve-node []
+  (leaf-node :auto-resolve "::"))
 
 (defn ns-map-node [children]
   (parent-node :ns-map children))
@@ -379,14 +382,53 @@
     :fn
     (do (. sb (append "#"))
         (run! #(code* % sb) (:children ast)))
-    :uneval
+    :deref
+    (do (. sb (append "@"))
+        (run! #(code* % sb) (:children ast)))
+    :eval
+    (do (. sb (append "#="))
+        (run! #(code* % sb) (:children ast)))
+    :discard
     (do (. sb (append "#_"))
         (run! #(code* % sb) (:children ast)))
+    :meta
+    (do (. sb (append (:open ast)))
+        (run! #(code* % sb) (:children ast)))
+    :quote
+    (do (. sb (append "'"))
+        (run! #(code* % sb) (:children ast)))
+    :syntax-quote
+    (do (. sb (append "`"))
+        (run! #(code* % sb) (:children ast)))
+    :unquote
+    (do (. sb (append "~"))
+        (run! #(code* % sb) (:children ast)))
+    :unquote-splicing
+    (do (. sb (append "~@"))
+        (run! #(code* % sb) (:children ast)))
+    :conditional
+    (do (. sb (append "#?"))
+        (run! #(code* % sb) (:children ast)))
+    :conditional-splicing
+    (do (. sb (append "#?@"))
+        (run! #(code* % sb) (:children ast)))
+    :ns-map
+    (do (. sb (append "#"))
+        (run! #(code* % sb) (:children ast)))
+    :tag
+    (do (. sb (append "#"))
+        (run! #(code* % sb) (:children ast)))
+    :var
+    (do (. sb (append "#'"))
+        (run! #(code* % sb) (:children ast)))
+    :regex
+    (.. sb (append (:open ast)) (append (:body ast)) (append (:close ast)))
     :string
-    (.. sb (append (:open ast)) (append (:text ast)) (append (:close ast)))
+    (.. sb (append (:open ast)) (append (:body ast)) (append (:close ast)) (append (or (:suffix ast) "")))
     :symbolic
     (.. sb (append (:open ast)) (append (:text ast)))
-    (:bool :char :delimiter :eol :keyword :macro_keyword :nil :number :punctuator :space :symbol :token)
+    (:auto-resolve :bool :char :delimiter :eol :keyword :macro_keyword :nil
+     :number :punctuator :space :symbol :token)
     (. sb (append (:text ast)))
     #_else (. sb (append (str ast)))))
 
