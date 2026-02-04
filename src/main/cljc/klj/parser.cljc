@@ -156,12 +156,15 @@
                         (peek-char rdr))
                     [nil ch2]
                     [ch2 (read-char rdr)])
-        token (read-token rdr ch3)
-        [sym-ns sym-name] (k/parse-symbol token)
-        text (str ch ch2 token)]
+        tok (read-token rdr ch3)
+        text (str ch ch2 tok)
+        ;; add comma to ensure trailing \, \; or \: in token are read
+        sym (k/read-string (str text \,))
+        s-ns (namespace sym)
+        s-name (name sym)]
     (if (k/peek-matches? \: rdr)
-      (kn/keyword-node (str text (read-char rdr)) sym-ns sym-name)
-      (kn/symbol-node text sym-ns sym-name))))
+      (kn/keyword-node (str text (read-char rdr)) s-ns s-name)
+      (kn/symbol-node text s-ns s-name))))
 
 (defn parse-symbolic [rdr ch ch2]
   (let [tok (read-token rdr ch)]
