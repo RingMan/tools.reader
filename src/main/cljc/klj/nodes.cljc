@@ -55,12 +55,7 @@
   (expr-node :bool src expr))
 
 (defn symbol-node [src s-ns s-name]
-  (expr-node :symbol src (symbol s-ns s-name) :ns s-ns :name s-name)
-  #_{::type :symbol
-   :text src
-   :ns s-ns
-   :name s-name
-   :expr (symbol s-ns s-name)})
+  (expr-node :symbol src (symbol s-ns s-name) :ns s-ns :name s-name))
 
 (defn symbolic-node
   ([src] (symbolic-node "##" src))
@@ -86,19 +81,14 @@
   (ws->str (vec "\n\n\r\n\r\r")))
 
 (defn whitespace [ws]
-  (leaf-node :space (ws->str ws))
-  #_{::type :space
-   :text (ws->str ws)})
+  (leaf-node :space (ws->str ws)))
 
 (def sp (whitespace \space))
 
 (def delimiters #{:opening :closing :neutral})
 
 (defn delimiter [delim kind]
-  (leaf-node :delimiter delim :kind kind)
-  #_{::type :delimiter
-   :kind kind
-   :text delim})
+  (leaf-node :delimiter delim :kind kind))
 
 (def lparen (delimiter \( :opening))
 (def rparen (delimiter \) :closing))
@@ -108,9 +98,7 @@
 (def rbrack (delimiter \] :closing))
 
 (defn punctuator [ch]
-  (leaf-node :punctuator ch)
-  #_{::type :punctuator
-   :text ch})
+  (leaf-node :punctuator ch))
 
 (def comma (punctuator \,))
 (def semi (punctuator \;))
@@ -122,10 +110,7 @@
   CRLF is a single ending with two characters."
   [eols]
   (let [eols (if (sequential? eols) eols [eols])]
-    (leaf-node :eol (apply str (flatten eols)) :eols eols)
-    #_{::type :eol
-     :eols eols
-     :text (apply str (flatten eols))}))
+    (leaf-node :eol (apply str (flatten eols)) :eols eols)))
 
 (def CRLF (eol-node "\r\n" #_[[\return \newline]]))
 (def LF (eol-node \newline))
@@ -176,56 +161,35 @@
   (string-node \' \' "She said, \"Hi!\""))
 
 (defn character-node [t ch]
-  (expr-node :char t ch)
-  #_{::type :char
-   :text t
-   :expr ch})
+  (expr-node :char t ch))
 
 (comment
   (character-node "'\n'" \newline))
 
 (defn number-node [t n]
-  (expr-node :number t n)
-  #_{::type :number
-   :text t
-   :expr n})
+  (expr-node :number t n))
 
 (defn nil-node [txt]
-  (expr-node :nil txt nil)
-  #_{::type :nil
-   :text txt
-   :expr nil})
+  (expr-node :nil txt nil))
 
 (comment
   (nil-node "Nada"))
 
 
 (defn sequence-node [open close children]
-  (parent-node :sequence children :open open :close close)
-  #_{::type :sequence
-   :open open
-   :close close
-   :children children})
+  (parent-node :sequence children :open open :close close))
 
 (defn vector-node [children]
-  (parent-node :vector children)
-  #_{::type :vector
-   :children children})
+  (parent-node :vector children))
 
 (defn list-node [children]
-  (parent-node :list children)
-  #_{::type :list
-   :children children})
+  (parent-node :list children))
 
 (defn map-node [children]
-  (parent-node :map children)
-  #_{::type :map
-   :children children})
+  (parent-node :map children))
 
 (defn set-node [children]
-  (parent-node :set children)
-  #_{::type :set
-   :children children})
+  (parent-node :set children))
 
 (defn deref-node [children]
   (parent-node :deref children))
@@ -316,7 +280,7 @@
   #?(:clj java.lang.String :cljs string)
   (as-node [expr]
     (string-node \" \" (let [s (pr-str expr)]
-                         (subs s 1 (dec (count s)))) ))
+                         (subs s 1 (dec (count s))))))
   ;; #?(:clj java.util.regex.Pattern :cljs js/RegExp)
   ;; cljs maps:  PersistentHashMap PersistentArrayMap
   ;; #?(:clj clojure.lang.Var :cljs Var)
