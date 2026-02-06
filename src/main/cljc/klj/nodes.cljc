@@ -27,6 +27,9 @@
 (defn expr-node [typ text expr & {:as opts}]
   (merge {::type typ :text text :expr expr} opts))
 
+(defn macro-node [typ macro children]
+  (parent-node typ children :macro macro))
+
 (defn code-node
   ([children] (code-node :clj children))
   ([lang children]
@@ -191,40 +194,60 @@
 (defn set-node [children]
   (parent-node :set children))
 
-(defn deref-node [children]
-  (parent-node :deref children))
+(defn deref-node
+  ([children] (deref-node \@ children))
+  ([macro children]
+   (macro-node :deref macro children)))
 
-(defn discard-node [children]
-  (parent-node :discard children))
+(defn discard-node
+  ([children] (discard-node "#_" children))
+  ([macro children]
+   (macro-node :discard macro children)))
 
-(defn eval-node [children]
-  (parent-node :eval children))
+(defn eval-node
+  ([children] (eval-node "#=" children))
+  ([macro children]
+   (macro-node :eval macro children)))
 
-(defn fn-node [children]
-  (parent-node :fn children))
+(defn fn-node
+  ([children] (fn-node "#" children))
+  ([macro children]
+   (macro-node :fn macro children)))
 
 (defn meta-node
   ([children] (meta-node \^ children))
-  ([open children]
-   (parent-node :meta children :open open)))
+  ([macro children]
+   (macro-node :meta macro children)))
 
-(defn quote-node [children]
-  (parent-node :quote children))
+(defn quote-node
+  ([children] (quote-node \' children))
+  ([macro children]
+   (macro-node :quote macro children)))
 
-(defn syntax-quote-node [children]
-  (parent-node :syntax-quote children))
+(defn syntax-quote-node
+  ([children] (syntax-quote-node \` children))
+  ([macro children]
+   (macro-node :syntax-quote macro children)))
 
-(defn unquote-node [children]
-  (parent-node :unquote children))
+(defn unquote-node
+  ([children] (unquote-node \~ children))
+  ([macro children]
+   (macro-node :unquote macro children)))
 
-(defn unquote-splicing-node [children]
-  (parent-node :unquote-splicing children))
+(defn unquote-splicing-node
+  ([children] (unquote-splicing-node "~@" children))
+  ([macro children]
+   (macro-node :unquote-splicing macro children)))
 
-(defn conditional-node [children]
-  (parent-node :conditional children))
+(defn conditional-node
+  ([children] (conditional-node "#?" children))
+  ([macro children]
+   (macro-node :conditional macro children)))
 
-(defn conditional-splicing-node [children]
-  (parent-node :conditional-splicing children))
+(defn conditional-splicing-node
+  ([children] (conditional-splicing-node "#?@" children))
+  ([macro children]
+   (macro-node :conditional-splicing macro children)))
 
 (defn auto-resolve-node []
   (leaf-node :auto-resolve "::"))
@@ -232,11 +255,15 @@
 (defn ns-map-node [children]
   (parent-node :ns-map children))
 
-(defn tag-node [children]
-  (parent-node :tag children))
+(defn tag-node
+  ([children] (tag-node \# children))
+  ([macro children]
+   (macro-node :tag macro children)))
 
-(defn var-node [children]
-  (parent-node :var children))
+(defn var-node
+  ([children] (var-node "#'" children))
+  ([macro children]
+   (macro-node :var macro children)))
 
 (defn as-nodes [coll]
   (mapv as-node coll))
@@ -343,47 +370,12 @@
     (do (. sb (append "["))
         (run! #(code* % sb) (:children ast))
         (. sb (append "]")))
-    :fn
-    (do (. sb (append "#"))
-        (run! #(code* % sb) (:children ast)))
-    :deref
-    (do (. sb (append "@"))
-        (run! #(code* % sb) (:children ast)))
-    :eval
-    (do (. sb (append "#="))
-        (run! #(code* % sb) (:children ast)))
-    :discard
-    (do (. sb (append "#_"))
-        (run! #(code* % sb) (:children ast)))
-    :meta
-    (do (. sb (append (:open ast)))
-        (run! #(code* % sb) (:children ast)))
-    :quote
-    (do (. sb (append "'"))
-        (run! #(code* % sb) (:children ast)))
-    :syntax-quote
-    (do (. sb (append "`"))
-        (run! #(code* % sb) (:children ast)))
-    :unquote
-    (do (. sb (append "~"))
-        (run! #(code* % sb) (:children ast)))
-    :unquote-splicing
-    (do (. sb (append "~@"))
-        (run! #(code* % sb) (:children ast)))
-    :conditional
-    (do (. sb (append "#?"))
-        (run! #(code* % sb) (:children ast)))
-    :conditional-splicing
-    (do (. sb (append "#?@"))
+    (:conditional :conditional-splicing :deref :discard :eval :fn :meta
+     :quote :syntax-quote :tag :unquote :unquote-splicing :var)
+    (do (. sb (append (:macro ast)))
         (run! #(code* % sb) (:children ast)))
     :ns-map
     (do (. sb (append "#"))
-        (run! #(code* % sb) (:children ast)))
-    :tag
-    (do (. sb (append "#"))
-        (run! #(code* % sb) (:children ast)))
-    :var
-    (do (. sb (append "#'"))
         (run! #(code* % sb) (:children ast)))
     :regex
     (.. sb (append (:open ast)) (append (:body ast)) (append (:close ast)))
