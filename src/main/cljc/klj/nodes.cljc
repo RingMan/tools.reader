@@ -278,32 +278,12 @@
   #?(:clj java.lang.Boolean :cljs boolean)
   (as-node [expr]
     (bool-node (pr-str expr) expr))
-  ;; DMK TODO: May need to just coerce to character-node
-  #?@(:clj (
-  java.lang.Character
-  #_(as-node [expr]
-    (case expr
-      \return CR
-      \newline LF
-      \( lparen
-      \) rparen
-      \{ lbrace
-      \} rbrace
-      \[ lbrack
-      \] rbrack
-      \: colon
-      \; semi
-      \, comma
-      (character-node (pr-str expr) expr)))
+  #?@(:clj (java.lang.Character
   (as-node [expr]
     (character-node (pr-str expr) expr))))
-  ;; java.lang.Long
   #?(:clj java.lang.Number :cljs number)
   (as-node [expr]
     (number-node (pr-str expr) expr))
-  ;; java.lang.Double
-  ;; (as-node [expr]
-  ;;   (number-node (pr-str expr) expr))
   #?(:clj java.lang.String :cljs string)
   (as-node [expr]
     (string-node \" \" (let [s (pr-str expr)]
