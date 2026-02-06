@@ -245,7 +245,7 @@
 (declare parse-sexprs)
 
 (defn parse-deref [rdr _ch]
-  (kn/parent-node :deref (parse-sexprs rdr :deref 1)))
+  (kn/deref-node (parse-sexprs rdr :deref 1)))
 
 (defn parse-eval [rdr _ch _ch2]
   (kn/eval-node (parse-sexprs rdr :eval 1)))
