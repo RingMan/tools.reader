@@ -16,7 +16,8 @@
             [klj.reader :as k]
             [clojure.core :as c])
   (:import (clojure.lang PersistentVector)
-           (java.lang Character Exception IllegalStateException Object StringBuilder)))
+           (java.lang Character Exception IllegalStateException Object StringBuilder)
+           (java.util.regex Pattern)))
 
 (def opening-delim? #{\( \{ \[})
 (def closing-delim? #{\) \} \]})
@@ -130,7 +131,8 @@
 (defn parse-keyword [rdr ch]
   (let [tok (read-token rdr ch)
         ;; add comma to ensure trailing \, \; or \: in token are read
-        kwd (k/read-string (str tok \,))
+        kwd (binding [tr/*alias-map* identity]
+              (k/read-string (str tok \,)))
         k-ns (namespace kwd)
         k-name (name kwd)]
     (kn/keyword-node tok k-ns k-name)))
@@ -173,12 +175,17 @@
 (def parse-whitespace-or-symbol
   (chained-reader-fn ?parse-space parse-symbol))
 
+(def ^Pattern int-pattern #"([-+]?)(?:(0)|([1-9][0-9]*)|0[xX]([0-9A-Fa-f]+)|0([0-7]+)|([1-9][0-9]?)[rR]([0-9A-Za-z]+)|0[0-9]+)(N)?")
+(def ^Pattern ratio-pattern #"([-+]?[0-9]+)/([0-9]+)")
+(def ^Pattern float-pattern #"([-+]?[0-9]+(\.[0-9]*)?([eE][-+]?[0-9]+)?)(M)?")
+
 (defn parse-number [rdr ch]
   (let [txt (read-token rdr ch)
-        n (edn/read-string txt)
-        txt' (pr-str n)]
-    (if (= txt txt')
-      (number-node txt n)
+        matches? (or (re-matches int-pattern txt)
+                     (re-matches ratio-pattern txt)
+                     (re-matches float-pattern txt))]
+    (if matches?
+      (number-node txt (edn/read-string txt))
       (throw (ex-info (str "Invalid numeric literal: " txt) {})))))
 
 (defn ?parse-signed-number [rdr ch]
@@ -288,13 +295,27 @@
       (kn/conditional-node (parse-sexprs rdr :conditional 1)))))
 
 (defn parse-ns-map [rdr ch ch2]
-  (let [ch3 (peek-char rdr)]
+  (let [ch3 (read-char rdr)
+        tok (str ch2 (read-token rdr ch3))
+        ;; _ (println {:tok tok})
+        ;; [k-ns k-name] (k/parse-symbol (subs tok 1))
+        ]
+    (if (= tok "::")
+      (kn/ns-map-node (cons (kn/auto-resolve-node)
+                            (parse-sexprs rdr :map 1)))
+      (let [kwd (k/read-string (str tok \,))
+            k-ns (namespace kwd)
+            k-name (name kwd)]
+        (kn/ns-map-node (cons (kn/keyword-node tok k-ns k-name)
+                              (parse-sexprs rdr :map 1)))))
+    )
+  #_(let [ch3 (peek-char rdr)]
     (if (= ch3 \:)
       (do (read-char rdr) ;; skip \:
           (kn/ns-map-node (cons (kn/auto-resolve-node)
                                 (parse-sexprs rdr :map 1))))
       (let [tok (read-token rdr ch2)
-            _ (println {:tok tok})
+            ;; _ (println {:tok tok})
             [k-ns k-name] (k/parse-symbol (subs tok 1))]
         (kn/ns-map-node (cons (kn/keyword-node tok k-ns k-name)
                               (parse-sexprs rdr :map 1)))))))
