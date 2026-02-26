@@ -1,5 +1,6 @@
 (ns klj.nodes
-  (:require [klj.reader :as klj]
+  (:require [clojure.string :as str]
+            [klj.reader :as klj]
             #_[textasy.lines :refer [lines]])
   #?(:cljs (:import goog.string.StringBuffer)))
 
@@ -158,9 +159,10 @@
     :open open
     :close close
     :suffix suffix
-    :body s}))
+    :body (if (sequential? s) (str/join s) s)}))
 
 (comment
+  (string-node ["hi\n" "bye"])
   (string-node \' \' "She said, \"Hi!\""))
 
 (defn character-node [t ch]
@@ -383,41 +385,100 @@
     (code* ast sb)
     (. sb (toString))))
 
-(declare exprs)
+;; Cribbed from rewrite-clj
+(defn default-auto-resolve [alias]
+  (if (= :current alias)
+    '?_current-ns_?
+    (symbol (str "??_" alias "_??"))))
 
-(defn expr [n]
-  (case (::type n)
-    :code (let [es (exprs (:children n))]
-            (if (next es)
-              (list* 'do es)
-              (first es)))
-    ;; TODO: think about handling raw string data, vs regular strings.
-    :string (klj/read-string (str (:open n) (:body n) (:close n) (:suffix n)))
-    :token (let [expr* (:expr n)]
-             (if (var? expr*) (expr* (:text n)) expr*))
-    ;; probably need to filter these as you go
-    (:comment :delimiter :eol :space :punctuator :uneval) *none*
-    (:bool :char :keyword :nil :number :symbol) (:expr n)
-    :symbolic (klj/read-string (str (:open n) (:text n)))
-    :vector (vec (exprs (:children n)))
-    :list (apply list (exprs (:children n)))
-    :set (set (exprs (:children n)))
-    :map (apply hash-map (exprs (:children n)))
-    :sequence
-    (let [open (:open n)
-          open (cond
-                 (map? open) (-> open :text str)
-                 (string? open) open
-                 (char? open) (str open))]
-      (case open
-        "(" (apply list (exprs (:children n)))
-        "[" (vec (exprs (:children n)))
-        "#{" (set (exprs (:children n)))
-        "{" (apply hash-map (exprs (:children n)))))
-    n))
+(defn- choose-qualifier [tok-qualifier map-qualifier]
+  (when (not (and map-qualifier (= "_" (:qualifier tok-qualifier))))
+    (or tok-qualifier map-qualifier)))
 
-(defn exprs [nodes]
-  (->> nodes (map expr) (remove #(identical? % *none*))))
+(defn node-qualifier [node]
+  (case (::type node)
+    (:keyword :symbol)
+    (let [s (:text node)
+          auto-resolved? (str/starts-with? s "::")
+          qualifier (second (re-matches #":?:?(.*)/.*" s))]
+      (when (or auto-resolved? qualifier)
+        {:auto-resolved? auto-resolved? :qualifier qualifier}))))
+
+(defn map-qualifier [node]
+  (case (::type node)
+    :ns-map (let [n (-> node :children first)]
+              (case (::type n)
+                :auto-resolve {:auto-resolved? true}
+                :keyword {:auto-resolved? (str/starts-with? (:text n) "::")
+                          :qualifier (when (:name n) (second (re-matches #":?:?(.*)" (:name n))))}))
+    #_else nil))
+
+(defn- sym-or-kwd-sexpr [node sexpr-f {:keys [auto-resolve map-qualifier]}]
+  (let [tok-qualifier (node-qualifier node)
+        {:keys [auto-resolved? qualifier]} (choose-qualifier tok-qualifier map-qualifier)]
+    (sexpr-f (some-> (if auto-resolved?
+                       ((or auto-resolve default-auto-resolve)
+                        (or (some-> qualifier symbol) :current))
+                       qualifier)
+                     str)
+             (:name node))))
+
+(declare exprs ns-map-expr)
+
+(defn expr
+  ([n] (expr n {}))
+  ([n opts]
+   ;; (println "expr ops:" opts)
+   (case (::type n)
+     :code (let [es (exprs (:children n) opts)]
+             (if (next es)
+               (list* 'do es)
+               (first es)))
+     ;; TODO: think about handling raw string data, vs regular strings.
+     :string (klj/read-string (str (:open n) (:body n) (:close n) (:suffix n)))
+     :token (let [expr* (:expr n)]
+              (if (var? expr*) (expr* (:text n)) expr*))
+     ;; probably need to filter these as you go
+     (:block-comment :line-comment :delimiter :discard :eol :space :punctuator) *none*
+     :keyword (sym-or-kwd-sexpr n keyword opts)
+     :symbol (sym-or-kwd-sexpr n symbol opts)
+     (:bool :char :nil :number) (:expr n)
+     :symbolic (klj/read-string (str (:open n) (:text n)))
+     :vector (vec (exprs (:children n) opts))
+     :list (apply list (exprs (:children n) opts))
+     :set (set (exprs (:children n) opts))
+     :map (apply hash-map (exprs (:children n) opts))
+     :ns-map (ns-map-expr n opts)
+     :sequence
+     (let [open (:open n)
+           open (cond
+                  (map? open) (-> open :text str)
+                  (string? open) open
+                  (char? open) (str open))]
+       (case open
+         "(" (apply list (exprs (:children n) opts))
+         "[" (vec (exprs (:children n) opts))
+         "#{" (set (exprs (:children n) opts))
+         "{" (apply hash-map (exprs (:children n) opts))))
+     ;; TODO: flesh out for other reader macros
+     (:quote) (klj/read-string (code n))
+     n)))
+
+(defn exprs
+  ([nodes] (exprs nodes {}))
+  ([nodes opts]
+   (->> nodes (map #(expr % opts)) (remove #(identical? % *none*)))))
+
+(defn ns-map-expr [node opts]
+  (let [k-opts (assoc opts :map-qualifier (map-qualifier node))]
+    (loop [kvs [] [n & ns] (-> node :children last :children) key? true]
+      (cond
+        (nil? n) (apply hash-map kvs)
+        (#{:block-comment :line-comment :delimiter :discard :eol :space :punctuator} (::type n))
+        (recur kvs ns key?)
+        key? (let [opts (case (::type n) (:keyword :symbol) k-opts opts)]
+               (recur (conj kvs (expr n opts)) ns false))
+        :else (recur (conj kvs (expr n opts)) ns true)))))
 
 (defn node->code [n]
   (case (::type n)
